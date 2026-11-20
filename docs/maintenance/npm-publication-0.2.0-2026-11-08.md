@@ -18,4 +18,4 @@
 
 ## npm 回执
 
-官方网页登录确认后，发布命令返回退出码 0 及 `+ @jangts/router-plus@0.2.0`。npm 官方公开注册表已确认 `latest: 0.2.0`、版本 `0.2.0` 和 27 个关键词；公开 README 与本地逐字一致，远端 integrity 与本次 tarball 一致。本次 npm 发布时未部署文档站或 cafe 应用。文档站后续部署见[部署记录](../../../pages/apps/router-plus-docs/docs/maintenance/deployment-0.2.0-2026-11-08.md)。
+官方网页登录确认后，发布命令返回退出码 0 及 `+ @jangts/router-plus@0.2.0`。npm 官方公开注册表已确认 `latest: 0.2.0`、版本 `0.2.0` 和 27 个关键词；公开 README 与本地逐字一致，远端 integrity 与本次 tarball 一致。本次 npm 发布时未部署文档站或 cafe 应用。文档站后续部署见[部署记录](https://github.com/Jangts/jangts-docs/blob/main/apps/router-plus-docs/docs/maintenance/deployment-0.2.0-2026-11-08.md)。
