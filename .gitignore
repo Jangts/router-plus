@@ -1,0 +1,42 @@
+.DS_Store
+.agents/*
+!.agents/skills/
+.agents/skills/*
+!.agents/skills/production-deployment/
+.local/
+.screenshots/
+.tmp/
+# 随应用的静态媒体二进制在构建前准备，不入库；由 prepare-ffmpeg.mjs 生成。
+/apps/ai-admin/resources/tools/ffmpeg/
+.pnpm-store/
+/deploy/docker/compose.minio.yaml
+/deploy/docker/compose.secrets.yaml
+/deploy/docker/secrets/
+/deploy/**/runtime.env
+/deploy/**/deploy.env
+/deploy/**/.deploy.lock
+/deploy/**/deployment.receipt
+/development/output/
+.external/
+
+# Workspace dependencies and build artifacts
+**/node_modules/
+**/dist/
+**/dist-dev/
+**/out/
+**/*.tsbuildinfo
+**/.umi/
+**/.umi-production/
+**/.umi-typecheck/
+**/.vite/
+
+# Local dependency caches and Python bytecode
+/.pnpm-store/
+**/__pycache__/
+**/*.pyc
+
+# VitePress build caches and temporary transforms (site config remains source)
+**/.vitepress/cache/
+**/.vitepress/dist/
+**/.vitepress/.temp/
+**/config.mts.timestamp-*.mjs

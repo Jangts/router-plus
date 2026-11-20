@@ -1,0 +1,40 @@
+# Dependencies and build output
+node_modules
+**/node_modules
+**/dist
+**/dist-dev
+**/.vitepress/cache
+**/.vitepress/dist
+coverage
+
+# Generated and cache directories (managed by tooling, do not hand-edit)
+**/*.generated.ts
+# site-sync owns these JSON copies byte-for-byte; format their contract sources instead.
+apps/ai-admin/resources/speech/config.json
+apps/server/config/speech/narration.json
+apps/server/config/speech/pronunciations.json
+**/.umi
+**/.umi-*
+
+# Lock files and transient tool artifacts (owned by their tools)
+package-lock.json
+**/*.timestamp-*.mjs
+
+# Test files are read by tooling, not humans; do not format or require comments
+**/*.test.js
+**/*.test.mjs
+**/*.test.cjs
+**/*.test.ts
+**/*.test.tsx
+
+# Local data, temporary files and output that never ship
+.local
+.tmp
+development/output
+.external
+
+# Binary/asset originals are not subject to code formatting
+shared/visual-assets
+
+# Documentation follows docs/documentation-standard.md and stays out of format scope
+**/*.md
