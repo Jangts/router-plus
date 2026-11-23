@@ -11,6 +11,9 @@ const require = createRequire(new URL('../package.json', import.meta.url));
 const { preProcessFile } = require('typescript');
 const manifest = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
 const lock = JSON.parse(await readFile(path.join(root, 'package-lock.json'), 'utf8'));
+for (const filename of ['pnpm-lock.yaml', 'yarn.lock', 'bun.lock', 'bun.lockb']) {
+  await assert.rejects(access(path.join(root, filename)), `Use only package-lock.json: ${filename}`);
+}
 const dependencies = {
   ...manifest.dependencies,
   ...manifest.peerDependencies,

@@ -20,6 +20,10 @@
 .external/
 
 # Workspace dependencies and build artifacts
+/pnpm-lock.yaml
+/yarn.lock
+/bun.lock
+/bun.lockb
 **/node_modules/
 **/dist/
 **/dist-dev/
