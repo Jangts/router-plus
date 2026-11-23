@@ -6,7 +6,7 @@ import type {
   StateIdOrOptions,
   PageContext,
 } from './types.js';
-import { queryKeys, encodeQuery } from './state-fields.js';
+import { queryKeys, encodeQuery, assertStateRules, stateReady } from './state-fields.js';
 import { isPlainObject } from './util.js';
 
 /** A framework render may prepare a weakly held facade, then publish it only after commit. */
@@ -15,7 +15,8 @@ export interface PreparedScope {
   commit(): void;
 }
 interface BindingHost {
-  committed(source: PageStateBridge): void;
+  committed(source: PageStateBridge, changed?: boolean): void;
+  refresh(source: PageStateBridge): void;
   prepare(context: PageContext): PreparedScope;
   batch(run: () => void): void;
   own(stop: () => void): () => void;
@@ -23,8 +24,16 @@ interface BindingHost {
 }
 const hosts = new WeakMap<RouterPlus, BindingHost>();
 /** Notify an installed source's framework publication without reading its current value. */
-export function publishNativeCommit(plus: RouterPlus, source: PageStateBridge): void {
-  hosts.get(plus)?.committed(source);
+export function publishNativeCommit(
+  plus: RouterPlus,
+  source: PageStateBridge,
+  changed = false,
+): void {
+  hosts.get(plus)?.committed(source, changed);
+}
+/** Observe dependency readiness without publishing application lifecycle events inside a reactive effect. */
+export function refreshNativeBinding(plus: RouterPlus, source: PageStateBridge): void {
+  hosts.get(plus)?.refresh(source);
 }
 export function attachBindingHost(plus: RouterPlus, host: BindingHost): void {
   hosts.set(plus, host);
@@ -107,9 +116,10 @@ export function bindNativeSource<S>(
     default: initial,
     ...(decode ? (isPlainObject(initial) ? { groupDecode: decode } : { decode }) : {}),
   } as StateField);
+  assertStateRules(rules);
   const owned = queryKeys(id, rules);
   if (new Set(owned).size !== owned.length) throw new Error(`Duplicate query ownership: ${id}`);
-  if (owned.length) {
+  if (owned.length && stateReady(rules)) {
     encodeQuery(id, rules, initial);
     encodeQuery(id, rules, source.read());
   }
@@ -138,4 +148,54 @@ export function registerSourceGroup(
     throw error;
   }
   return host.own(stop);
+}
+
+/** Keep callback rules current after framework commit while keeping registration metadata stable. */
+export function liveBindingOptions<S>(get: () => StateIdOrOptions<S>): StateIdOrOptions<S> {
+  const initial = get();
+  if (typeof initial === 'string') return initial;
+  const read = () => get() as Exclude<StateIdOrOptions<S>, string>;
+  return {
+    ...initial,
+    ...(initial.ready ? { ready: () => read().ready?.() ?? true } : {}),
+    ...(initial.encode ? { encode: (value: S) => (read().encode ?? initial.encode)!(value) } : {}),
+    ...(initial.decode
+      ? {
+          decode: (raw: unknown) => ((read().decode ?? initial.decode) as (raw: unknown) => S)(raw),
+        }
+      : {}),
+    ...(initial.validate ? { validate: (value: unknown) => read().validate?.(value) ?? true } : {}),
+    fields:
+      initial.fields &&
+      Object.fromEntries(
+        Object.entries(initial.fields as Record<string, StateField>).map(([key, rule]) => [
+          key,
+          {
+            ...rule,
+            ...(rule?.encode
+              ? {
+                  encode: (value: unknown) =>
+                    ((read().fields as Record<string, StateField>)?.[key]?.encode ?? rule.encode)!(
+                      value,
+                    ),
+                }
+              : {}),
+            ...(rule?.decode
+              ? {
+                  decode: (raw: string) =>
+                    ((read().fields as Record<string, StateField>)?.[key]?.decode ?? rule.decode)!(
+                      raw,
+                    ),
+                }
+              : {}),
+            ...(rule?.validate
+              ? {
+                  validate: (value: unknown) =>
+                    (read().fields as Record<string, StateField>)?.[key]?.validate?.(value) ?? true,
+                }
+              : {}),
+          },
+        ]),
+      ),
+  } as StateIdOrOptions<S>;
 }

@@ -91,6 +91,25 @@ function waitFor(
   });
 }
 
+/** CSSOM nearest alignment keeps spanning/visible targets fixed and chooses the closest edge. */
+function alignAxis(
+  start: number,
+  end: number,
+  viewportStart: number,
+  viewportEnd: number,
+  alignment: NonNullable<ScrollOptions['block']>,
+): number {
+  if (![start, end, viewportStart, viewportEnd].every(Number.isFinite)) return 0;
+  if (alignment === 'start') return start - viewportStart;
+  if (alignment === 'end') return end - viewportEnd;
+  if (alignment === 'center') return (start + end - viewportStart - viewportEnd) / 2;
+  if (start < viewportStart && end > viewportEnd) return 0;
+  const small = end - start <= viewportEnd - viewportStart;
+  if (start < viewportStart) return small ? start - viewportStart : end - viewportEnd;
+  if (end > viewportEnd) return small ? end - viewportEnd : start - viewportStart;
+  return 0;
+}
+
 export function createDomRuntime(options: DomRuntimeOptions = {}): TargetRuntime {
   const root = options.root ?? document;
   let previousFocus: HTMLElement | null = null;
@@ -122,30 +141,31 @@ export function createDomRuntime(options: DomRuntimeOptions = {}): TargetRuntime
         typeof scrollOptions.container === 'string'
           ? root.querySelector(scrollOptions.container)
           : scrollOptions.container;
-      if (container && !scrollOptions.offset) {
+      if (container) {
         const rect = element.getBoundingClientRect(),
           bounds = container.getBoundingClientRect();
-        const block = scrollOptions.block ?? 'start';
-        const top =
-          block === 'center'
-            ? rect.top - bounds.top - (bounds.height - rect.height) / 2
-            : block === 'end'
-              ? rect.bottom - bounds.bottom
-              : block === 'nearest' && rect.top >= bounds.top && rect.bottom <= bounds.bottom
-                ? 0
-                : rect.top - bounds.top;
-        container.scrollBy({ top, behavior });
+        const top = bounds.top + (container.clientTop || 0);
+        const left = bounds.left + (container.clientLeft || 0);
+        const bottom = top + (container.clientHeight || bounds.height);
+        const right = left + (container.clientWidth || bounds.width);
+        const direction =
+          container.ownerDocument?.defaultView?.getComputedStyle(container).direction;
+        let inline = scrollOptions.inline ?? 'nearest';
+        if (direction === 'rtl' && (inline === 'start' || inline === 'end'))
+          inline = inline === 'start' ? 'end' : 'start';
+        container.scrollBy({
+          top: scrollOptions.offset
+            ? rect.top - top - scrollOptions.offset
+            : alignAxis(rect.top, rect.bottom, top, bottom, scrollOptions.block ?? 'start'),
+          left: alignAxis(rect.left, rect.right, left, right, inline),
+          behavior,
+        });
         return;
       }
       if (scrollOptions.offset) {
         const rect = element.getBoundingClientRect();
         const offset = scrollOptions.offset;
-        if (container) {
-          container.scrollBy({
-            top: rect.top - container.getBoundingClientRect().top - offset,
-            behavior,
-          });
-        } else if (typeof window !== 'undefined') {
+        if (typeof window !== 'undefined') {
           window.scrollBy({ top: rect.top - offset, behavior });
         }
         return;

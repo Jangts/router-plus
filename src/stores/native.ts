@@ -17,16 +17,34 @@ export function splitBindingArguments(args: unknown[]): {
 /** Data-only index projection; native store results keep their full original type. */
 export type DataState<S> = S extends (...args: never[]) => unknown
   ? S
-  : S extends readonly unknown[]
+  : S extends readonly unknown[] | Date | ReadonlyMap<unknown, unknown> | ReadonlySet<unknown>
     ? S
     : S extends object
       ? { [K in keyof S as S[K] extends (...args: never[]) => unknown ? never : K]: S[K] }
       : S;
 export function dataValues<S>(value: S): DataState<S> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return value as DataState<S>;
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    value instanceof Date ||
+    value instanceof Map ||
+    value instanceof Set
+  )
+    return value as DataState<S>;
+  if (!isRecordState(value))
+    throw new TypeError(
+      'Zustand root state requires a plain record, native collection, date, array or primitive',
+    );
   return Object.fromEntries(
     Object.entries(value).filter(([, item]) => typeof item !== 'function'),
   ) as DataState<S>;
+}
+/** Only ordinary records use merge writes and action projection; native values remain atomic. */
+export function isRecordState(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== 'object') return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }
 /** Store-only setters are extracted before navigation rules reach Core. */
 export type StoreStateOptions<S> =

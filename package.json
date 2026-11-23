@@ -1,6 +1,6 @@
 {
   "name": "@jangts/router-plus",
-  "version": "0.4.6",
+  "version": "0.5.0",
   "type": "commonjs",
   "description": "Routing and native state bindings for React and Vue with query codecs, retained views, highlights and guided tours",
   "license": "Apache-2.0",
@@ -16,7 +16,8 @@
     "LICENSE",
     "NOTICE",
     "CHANGELOG.md",
-    "docs/state-bindings.md"
+    "docs/state-bindings.md",
+    "docs/application-integration.md"
   ],
   "sideEffects": [
     "**/*.css"

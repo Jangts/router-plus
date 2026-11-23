@@ -6,6 +6,7 @@ import { describeSource } from './state-inspection.js';
  */
 import {
   stateFields,
+  stateReady,
   validState,
   sameState,
   decodeQuery,
@@ -57,7 +58,7 @@ export interface StateEngineOptions {
   diagnostic?(error: unknown, stage: string): void;
   emit(event: RouterEvent): void;
   defer?(effect: () => void): void;
-  bridgeChanged?(context: PageContext, key: string, value: unknown): void;
+  bridgeChanged?(context: PageContext, key: string, value: unknown, rules?: StateField): void;
 }
 
 /** Standalone owned-state adapter, also useful for SSR. */
@@ -306,7 +307,7 @@ export class StateEngine {
           const value = bridge.read();
           this.notify(record, id, value);
           if (!initializing && !entry.restoring)
-            this.options.bridgeChanged?.(record.context, id, value);
+            this.options.bridgeChanged?.(record.context, id, value, entry.rules);
         };
         if (this.options.defer) this.options.defer(notify);
         else notify();
@@ -455,12 +456,19 @@ export class StateEngine {
     const record = this.scope(context),
       values: Record<string, unknown> = {};
     for (const [id, entry] of record.bridges) {
-      const field = stateFields(this.options.getDefinition(context.pageId))[id];
+      const field = entry.rules ?? stateFields(this.options.getDefinition(context.pageId))[id];
       if (!field || field.navigation === false) continue;
       const value = entry.bridge.read();
       if (validState(field, value)) values[id] = value;
     }
     return values;
+  }
+  /** Project only registration rules from the actual instance, never another live-value store. */
+  bindingRules(context: PageContext): Readonly<Record<string, StateField>> {
+    const bridges = context.instance && this.scopes.get(context.instance.stateKey)?.bridges;
+    return Object.fromEntries(
+      [...(bridges ?? [])].flatMap(([id, entry]) => (entry.rules ? [[id, entry.rules]] : [])),
+    );
   }
   async call(id: string, args: readonly unknown[], context?: PageContext): Promise<CommandResult> {
     const record = this.scope(context),
@@ -525,24 +533,34 @@ export class StateEngine {
     const record = this.scope(context);
     for (const [key, entry] of record.bridges) {
       if (
+        !stateReady(
+          entry.rules ?? stateFields(this.options.getDefinition(context.pageId))[key] ?? {},
+        )
+      )
+        continue;
+      if (
         (entry.rules ?? stateFields(this.options.getDefinition(context.pageId))[key])
           ?.navigation === false ||
         !entry.bridge.write ||
-        !Object.hasOwn(context.values, key) ||
-        sameQueryState(
-          key,
-          entry.rules ?? stateFields(this.options.getDefinition(context.pageId))[key],
-          entry.bridge.read(),
-          context.values[key],
-        )
+        !Object.hasOwn(context.values, key)
       )
         continue;
       if (!entry.bridge.write) throw new Error(`Navigation state bridge is readonly: ${key}`);
       const result = await this.enqueue(record, key, async () => {
         if (record.bridges.get(key) !== entry) return { ok: false, reason: 'cancelled' };
+        if (
+          record.context.path !== context.path ||
+          record.context.location.entryKey !== context.location.entryKey
+        )
+          return { ok: false, reason: 'cancelled' };
+        const field = entry.rules ?? stateFields(this.options.getDefinition(context.pageId))[key];
+        if (
+          !stateReady(field) ||
+          sameQueryState(key, field, entry.bridge.read(), context.values[key])
+        )
+          return { ok: true };
         entry.restoring = true;
         try {
-          const field = entry.rules ?? stateFields(this.options.getDefinition(context.pageId))[key];
           const next = queryKeys(key, field).length
             ? restoreQuery(key, field, new URLSearchParams(context.search), entry.bridge.read())
             : context.values[key];

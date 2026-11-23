@@ -27,7 +27,56 @@ export function stateFields(
   };
 }
 
+/** Reject malformed binding policies before subscribing to an application source. */
+export function assertStateRules(field: StateField): void {
+  const checks: readonly (readonly [boolean, string])[] = [
+    [
+      field.observe === undefined || typeof field.observe === 'function',
+      'State observe must be a subscription function',
+    ],
+    [
+      field.history === undefined || field.history === 'push' || field.history === 'replace',
+      'State history must be push or replace',
+    ],
+    [
+      field.ready === undefined || typeof field.ready === 'function',
+      'State ready must be a synchronous predicate',
+    ],
+    [
+      field.omitDefault === undefined || typeof field.omitDefault === 'boolean',
+      'State omitDefault must be boolean',
+    ],
+  ];
+  for (const [valid, message] of checks) if (!valid) throw new TypeError(message);
+  for (const child of Object.values(field.fields ?? {})) assertStateRules(child);
+}
+
+/** Callback rules may depend on live framework data even without an explicit loading gate. */
+export function hasLiveStateRules(field: StateField): boolean {
+  return Boolean(
+    field.observe ||
+    field.ready ||
+    field.validate ||
+    field.encode ||
+    field.decode ||
+    field.groupDecode ||
+    field.codec ||
+    Object.values(field.fields ?? {}).some(hasLiveStateRules),
+  );
+}
+
+/** Readiness is a synchronous application predicate, never a loading operation. */
+export function stateReady(field: StateField): boolean {
+  if (!field.ready) return true;
+  const ready = field.ready();
+  if (typeof ready !== 'boolean') {
+    void Promise.resolve(ready).catch(() => {});
+    throw new TypeError('State readiness must return a boolean');
+  }
+  return ready;
+}
 export function validState(field: StateField, value: unknown): boolean {
+  if (!stateReady(field)) return true;
   if (field.values && !field.values.some((item) => sameState({}, item, value))) return false;
   if (field.validate && !field.validate(value)) return false;
   if (field.fields) {
@@ -111,7 +160,13 @@ function rules(field: StateField): Readonly<Record<string, StateField>> {
   const result = Object.fromEntries(
     [...keys].map((key) => [
       key,
-      { default: initial[key], query: field.query === true, ...field.fields?.[key] },
+      {
+        default: initial[key],
+        query: field.query === true,
+        ...Object.fromEntries(
+          Object.entries(field.fields?.[key] ?? {}).filter(([, value]) => value !== undefined),
+        ),
+      },
     ]),
   );
   if (fixed(field)) compiledRules.set(field, result);
@@ -153,6 +208,14 @@ export function encodeQuery(id: string, field: StateField, value: unknown): URLS
   const keys = queryKeys(id, field),
     output = new URLSearchParams();
   if (!keys.length) return output;
+  // Expanded groups apply omission per field, including an explicit false override.
+  if (
+    field.omitDefault &&
+    (!group(field) || field.encode) &&
+    !field.fields &&
+    sameState(field, field.default, value)
+  )
+    return output;
   if (group(field) && field.encode) {
     const encoded = groupParams(field.encode(value));
     for (const [key, item] of encoded) {
@@ -164,7 +227,11 @@ export function encodeQuery(id: string, field: StateField, value: unknown): URLS
   if (group(field) || field.fields) {
     if (!isQueryObject(value)) throw new Error('Query group requires an object');
     for (const [key, rule] of Object.entries(rules(field))) {
-      if (!rule.query) continue;
+      if (
+        !rule.query ||
+        ((rule.omitDefault ?? field.omitDefault) && sameState(rule, rule.default, value[key]))
+      )
+        continue;
       const encoded = encodeState(rule, value[key]);
       if (encoded !== undefined)
         output.set(typeof rule.query === 'string' ? rule.query : key, encoded);
@@ -210,7 +277,7 @@ export function resolveStateValues(
   const query = new URLSearchParams(search),
     values: Record<string, unknown> = Object.create(null);
   for (const [key, field] of Object.entries(fields)) {
-    if (field.navigation === false) continue;
+    if (field.navigation === false || !stateReady(field)) continue;
     let value =
       isQueryObject(history) && Object.hasOwn(history, key)
         ? history[key]
@@ -226,10 +293,35 @@ export function resolveStateValues(
   return values;
 }
 export function sameState(field: StateField, first: unknown, second: unknown): boolean {
-  if (Object.is(first, second)) return true;
-  if (!first || !second || typeof first !== 'object' || typeof second !== 'object') return false;
+  const pairs = new WeakMap<object, WeakSet<object>>();
+  const equal = (a: unknown, b: unknown): boolean => {
+    if (Object.is(a, b)) return true;
+    if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false;
+    if (pairs.get(a)?.has(b)) return true;
+    const seen = pairs.get(a) ?? new WeakSet<object>();
+    seen.add(b);
+    pairs.set(a, seen);
+    if (a instanceof Date || b instanceof Date)
+      return a instanceof Date && b instanceof Date && Object.is(a.getTime(), b.getTime());
+    if (a instanceof Map || b instanceof Map)
+      return a instanceof Map && b instanceof Map && equal([...a], [...b]);
+    if (a instanceof Set || b instanceof Set)
+      return a instanceof Set && b instanceof Set && equal([...a], [...b]);
+    if (Array.isArray(a) || Array.isArray(b)) {
+      if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+    } else if (!isQueryObject(a) || !isQueryObject(b)) return false;
+    const keys = Object.keys(a);
+    return (
+      keys.length === Object.keys(b).length &&
+      keys.every(
+        (key) =>
+          Object.hasOwn(b, key) &&
+          equal((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]),
+      )
+    );
+  };
   try {
-    return JSON.stringify(first) === JSON.stringify(second);
+    return equal(first, second);
   } catch {
     return false;
   }

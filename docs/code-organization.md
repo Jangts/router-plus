@@ -18,7 +18,7 @@
 
 ## 目录、共享与依赖
 
-同一能力的说明、脚本和模板按层归于一处。运行实现归 apps/*/src 或 packages，应用流水线归 apps/*/scripts，构建工具归 development/scripts 或 development/tools，手动长期维护归 development/maintenance，产品合同归 docs，发布设施归 deploy。只建立实际需要的目录。
+同一能力的说明、脚本和模板按层归于一处。本单包的运行实现归 src/，构建与检查工具归 scripts/，回归归 test/，产品合同归 docs/，长期维护记录归 docs/maintenance/，临时工具与结果归 .tmp/。具有 apps/* 或 packages/* 的工程按对应应用／包边界组织；本项目不为套用目录模板建立空 workspace、部署层或平行工具目录。
 
 跨项目通过声明的包入口或明确的资料输入关系消费，不跨应用相对导入业务实现、不借用其他项目的 node_modules。各项目独立维护依赖锁、素材、产品规则和视觉定义。通用核心不按应用业务名称堆分支，也不反向依赖具体扩展业务。
 

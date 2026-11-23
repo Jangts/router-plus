@@ -1,5 +1,6 @@
 import {
   stateFields,
+  stateReady,
   validState,
   encodeQuery,
   decodeQuery,
@@ -21,6 +22,8 @@ import type {
   LinkResolution,
   LinkTarget,
   PageLinkOptions,
+  PageDefinition,
+  StateField,
   RouterLocation,
 } from './types.js';
 import {
@@ -70,6 +73,10 @@ interface ResolveContext {
   readonly matcher: RouteMatcher;
   readonly location: RouterLocation;
   readonly origin?: string;
+  readonly bindingFields?: (
+    definition: PageDefinition | undefined,
+    href: string,
+  ) => Readonly<Record<string, StateField>>;
 }
 
 function splitQueryAndHash(href: string): { pathname: string; search: string; hash: string } {
@@ -112,7 +119,9 @@ function resolvePageHref(
   const matched = context.runtime.match(pathname);
   let pageId = matched ? pageIdOf(matched.definition) : null;
   if (knownDefinitionId) pageId = knownDefinitionId;
-  const fields = stateFields(matched?.definition, context.pageLink?.tabKey);
+  const fields = context.bindingFields
+    ? context.bindingFields(matched?.definition, href)
+    : stateFields(matched?.definition, context.pageLink?.tabKey);
   const supplied = {
     ...explicitValues,
     ...(explicitTab !== undefined ? { tab: explicitTab } : {}),
@@ -124,13 +133,15 @@ function resolvePageHref(
       return { ok: false, reason: key === 'tab' ? 'invalid-tab' : 'invalid-target' };
     const field = fields[key],
       keys = queryKeys(key, field);
-    if (keys.length) {
+    if (!stateReady(field)) return { ok: false, reason: 'not-ready' };
+    if (keys.length && stateReady(field)) {
       for (const name of keys) query.delete(name);
       for (const [name, item] of encodeQuery(key, field, value)) query.append(name, item);
       queryChanged = true;
     }
   }
   for (const [key, field] of Object.entries(fields)) {
+    if (!stateReady(field)) continue;
     if (!queryKeys(key, field).some((name) => query.has(name))) continue;
     try {
       if (!validState(field, decodeQuery(key, field, query)))
@@ -264,7 +275,10 @@ function resolveTargetInternal(
       }
     }
     const queryPairs = Object.entries(target.query ?? {});
-    const href = `${built}${buildSearch(queryPairs)}`;
+    const hash = target.hash ?? '';
+    if (hash && (!hash.startsWith('#') || /[\\\u0000-\u001f\u007f]/u.test(hash)))
+      return { ok: false, reason: 'invalid-target' };
+    const href = `${built}${buildSearch(queryPairs)}${hash}`;
     return resolvePageHref(
       href,
       context,

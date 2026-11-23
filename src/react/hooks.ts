@@ -4,6 +4,7 @@
 import { useCallback, useContext, useEffect, useMemo, useSyncExternalStore } from 'react';
 import type {
   CommandResult,
+  QueryRecord,
   GlobalGuard,
   HighlightOptions,
   HighlightState,
@@ -19,13 +20,22 @@ import { UNSAFE_RouteContext, UNSAFE_LocationContext, resolvePath } from './nati
 import { resolveStatePage } from '../core/page-selector.js';
 import { usePlusContext } from './provider.js';
 
-export type PageQueryInit =
-  string | URLSearchParams | Record<string, string> | readonly (readonly [string, string])[];
+import {
+  createPageQuery,
+  updatePageQuery,
+  patchPageQuery,
+  type PageQueryInit,
+} from '../core/query-update.js';
+export type { PageQueryInit } from '../core/query-update.js';
 
-export type SetPageQuery = (
-  next: PageQueryInit | ((previous: URLSearchParams) => URLSearchParams),
-  options?: NavigateOptions,
-) => void;
+export interface SetPageQuery {
+  (
+    next: PageQueryInit | ((previous: URLSearchParams) => PageQueryInit),
+    options?: NavigateOptions,
+  ): Promise<CommandResult>;
+  /** Update selected query keys; undefined removes a key and arrays preserve repeated values. */
+  patch(patch: QueryRecord, options?: NavigateOptions): Promise<CommandResult>;
+}
 
 /** Preserve the caller's route-relative semantics before submitting an absolute target. */
 export function useRouterPlus(): import('../core/types.js').RouterPlus & {
@@ -53,6 +63,19 @@ export function useRouterPlus(): import('../core/types.js').RouterPlus & {
               : null;
       if (value === null || value.startsWith('/') || /^[a-z][a-z\d+.-]*:/i.test(value))
         return target;
+      if (value.startsWith('#')) {
+        const current = plus.getContext();
+        const href = `${current.pathname}${current.search}${value}`;
+        if (typeof target === 'string') return href;
+        if ('path' in target) return { ...target, path: href };
+        if (!('pathname' in target)) return target;
+        return {
+          ...target,
+          pathname: current.pathname,
+          search: target.search ?? current.search,
+          hash: target.hash ?? value,
+        };
+      }
       let base = location.pathname,
         relative = value;
       if (
@@ -113,7 +136,12 @@ export function usePageContext(): PageContext {
   const subscribe = useCallback(
     (listener: () => void) =>
       plus.subscribe((event) => {
-        if (event.type === 'location' || event.type === 'navigation' || event.type === 'tab')
+        if (
+          event.type === 'location' ||
+          event.type === 'navigation' ||
+          event.type === 'tab' ||
+          event.type === 'retain'
+        )
           listener();
       }),
     [plus],
@@ -198,23 +226,21 @@ export function usePageQuery(defaultInit?: PageQueryInit): [URLSearchParams, Set
   const context = usePageContext();
   const params = useMemo(() => {
     if (context.search) return new URLSearchParams(context.search);
-    return new URLSearchParams(defaultInit as string | URLSearchParams | undefined);
+    return createPageQuery(defaultInit);
   }, [context.search, defaultInit]);
-  const set = useCallback<SetPageQuery>(
-    (next, options) => {
-      const value =
-        typeof next === 'function'
-          ? next(new URLSearchParams(params))
-          : next instanceof URLSearchParams
-            ? next
-            : new URLSearchParams(next as string | Record<string, string>);
-      const search = value.toString();
-      void plus.navigate(
-        { pathname: context.pathname, search: search ? `?${search}` : '', hash: context.hash },
-        options,
-      );
-    },
-    [plus, params, context.pathname, context.hash],
+  const set = useMemo<SetPageQuery>(
+    () =>
+      Object.assign(
+        (
+          next: PageQueryInit | ((previous: URLSearchParams) => PageQueryInit),
+          options?: NavigateOptions,
+        ) => updatePageQuery(plus, next, options, defaultInit),
+        {
+          patch: (patch: QueryRecord, options?: NavigateOptions) =>
+            patchPageQuery(plus, patch, options, defaultInit),
+        },
+      ),
+    [plus, defaultInit],
   );
   return [params, set];
 }

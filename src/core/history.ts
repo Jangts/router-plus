@@ -32,10 +32,21 @@ export function writeHistoryState(
   key: string,
 ): Record<string, unknown> {
   const base = isPlainObject(existing) ? { ...existing } : {};
-  base[key] = {
-    ...record,
-    ...(!isPlainObject(existing) && existing !== undefined ? { rawState: existing } : {}),
-  } satisfies StoredRecord;
+  const previous = isPlainObject(existing) ? existing[key] : undefined;
+  const raw =
+    !isPlainObject(existing) && existing !== undefined
+      ? { rawState: existing }
+      : readHistoryState(existing, key) &&
+          isPlainObject(previous) &&
+          Object.hasOwn(previous, 'rawState')
+        ? { rawState: previous.rawState }
+        : {};
+  Object.defineProperty(base, key, {
+    value: { ...record, ...raw } satisfies StoredRecord,
+    enumerable: true,
+    writable: true,
+    configurable: true,
+  });
   return base;
 }
 

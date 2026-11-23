@@ -1,5 +1,5 @@
 import { describeSource } from './state-inspection.js';
-import { attachBindingHost, type PreparedScope } from './native-bindings.js';
+import { attachBindingHost, snapshotSource, type PreparedScope } from './native-bindings.js';
 /**
  * Router Plus assembly.
  *
@@ -9,6 +9,9 @@ import { attachBindingHost, type PreparedScope } from './native-bindings.js';
  */
 import {
   stateFields,
+  stateReady,
+  hasLiveStateRules,
+  encodeQuery,
   validState,
   sameState,
   queryKeys,
@@ -17,6 +20,7 @@ import {
   restoreQuery,
 } from './state-fields.js';
 import { createCatalogRuntime, type CatalogRuntime } from './catalog.js';
+import { attachQueryOwner, patchPageQuery, updateStateQuery } from './query-update.js';
 import { dispatchCommand } from './commands.js';
 import { executeSequence, type SequenceSource } from './sequence.js';
 import type { CommandHost } from './commands.js';
@@ -79,13 +83,37 @@ import {
   toErrorMessage,
 } from './util.js';
 
-export const ROUTER_PLUS_VERSION = '0.4.6';
+export const ROUTER_PLUS_VERSION = '0.5.0';
 export const ROUTER_PLUS_API_VERSION = 1;
 
 interface GuardEntry {
   readonly guard: GlobalGuard;
   readonly priority: number;
   readonly order: number;
+}
+
+interface GlobalSourceEntry {
+  source: PageStateBridge;
+  rules: StateField;
+  stop?: () => void;
+  restoring: boolean;
+  published?: boolean;
+  queue?: Promise<unknown>;
+}
+
+interface PendingState {
+  value: unknown;
+  active(): boolean;
+  issued: boolean;
+  context: PageContext;
+}
+
+function sameAddress(first: PageContext, second: PageContext): boolean {
+  return (
+    first.path === second.path &&
+    first.instance?.stateKey === second.instance?.stateKey &&
+    first.location.entryKey === second.location.entryKey
+  );
 }
 
 function normalizeLocation(location: RouterLocation): RouterLocation {
@@ -133,6 +161,7 @@ export class RouterPlusImpl implements RouterPlus, CommandHost {
   private historyRecord: HistoryRecord | null = null;
   private running: Promise<CommandResult> | null = null;
   private activeController: AbortController | null = null;
+  private readonly nativeCommits = new Set<string>();
   private readonly observedNavigations = new Map<string, PageContext | null>();
   private lastSignature = '';
   private pluginFailure: string | null = null;
@@ -171,6 +200,7 @@ export class RouterPlusImpl implements RouterPlus, CommandHost {
       options.pageLink,
       this.historyRecord,
       this.instanceKeyStrategies,
+      this.bindingFields,
     );
     this.diagnoseStateQuery(this.context);
     this.state = new StateEngine({
@@ -179,25 +209,23 @@ export class RouterPlusImpl implements RouterPlus, CommandHost {
       getContext: () => this.context,
       getDefinition: (pageId) => this.definitionOf(pageId),
       emit: (event) => this.bus.emit(event),
-      bridgeChanged: (context, key, value) => {
+      bridgeChanged: (context, key, value, rules) => {
         if (context.instance?.stateKey !== this.context.instance?.stateKey) return;
-        const field = stateFields(this.definitionOf(context.pageId))[key];
+        const field = rules ?? this.fieldsForContext(context)[key];
         if (
           !field ||
+          !stateReady(field) ||
           field.navigation === false ||
           sameQueryState(key, field, this.context.values[key], value)
         )
           return;
         if (!validState(field, value)) {
           this.bindingDiagnostic(new Error(`Invalid external state: ${key}`), 'state.bridge');
+          this.scheduleStateRestore(this.context);
           return;
         }
         void this.setState(value, key).then((result) => {
-          if (!result.ok)
-            this.bindingDiagnostic(
-              new Error(`State address update failed: ${key}: ${result.reason}`),
-              'state.bridge',
-            );
+          this.finishStateAddress(result, key);
         });
       },
       codec: options.stateCodec,
@@ -219,7 +247,8 @@ export class RouterPlusImpl implements RouterPlus, CommandHost {
       emit: (event) => this.bus.emit(event),
     });
     attachBindingHost(this, {
-      committed: (source) => this.sourceCommitted(source, this.context),
+      committed: (source, changed) => this.sourceCommitted(source, this.context, changed),
+      refresh: (source) => this.refreshBinding(source),
       prepare: (context) => this.prepareScope(context),
       batch: (run) => this.bindingBatch(run),
       own: (stop) => this.ownBinding(stop),
@@ -270,10 +299,56 @@ export class RouterPlusImpl implements RouterPlus, CommandHost {
     return pageId ? this.catalog.byId.get(pageId) : undefined;
   }
 
+  /** Runtime callbacks belong to a concrete source instance; catalog metadata is only a fallback. */
+  private readonly bindingFields = (
+    context: PageContext,
+    definition?: PageDefinition,
+  ): Readonly<Record<string, StateField>> => {
+    if (!definition)
+      return Object.fromEntries(
+        [...this.globalSources]
+          .filter(([id, entry]) => queryKeys(id, entry.rules).length)
+          .map(([id, entry]) => [id, entry.rules]),
+      );
+    const installed = this.state?.bindingRules(context) ?? {};
+    return {
+      ...Object.fromEntries(
+        Object.entries({
+          ...stateFields(definition, this.options.pageLink?.tabKey),
+          ...this.catalog.declaredStates.get(context.pageId!),
+        }).map(([id, field]) => [
+          id,
+          !field.catalog && field.ready && !installed[id] && !this.globalSources.has(id)
+            ? { ...field, ready: () => false }
+            : field,
+        ]),
+      ),
+      ...installed,
+    };
+  };
+
+  private fieldsForContext(context: PageContext): Readonly<Record<string, StateField>> {
+    const definition = this.definitionOf(context.pageId);
+    return this.bindingFields(context, definition);
+  }
+
   private resolveContext() {
     return {
       origin: this.options.origin,
       runtime: this.catalog,
+      bindingFields: (definition: PageDefinition | undefined, href: string) => {
+        const location = { ...this.location, ...splitHref(href), matched: undefined };
+        const context = buildPageContext(
+          location,
+          this.catalog,
+          this.matcher,
+          this.options.pageLink,
+          null,
+          this.instanceKeyStrategies,
+          this.bindingFields,
+        );
+        return this.bindingFields(context, definition);
+      },
       registry: this.links,
       pageLink: this.options.pageLink,
       matcher: this.matcher,
@@ -427,13 +502,19 @@ export class RouterPlusImpl implements RouterPlus, CommandHost {
   private handleChange(change: import('./types.js').CommittedChange): void {
     const signature = this.signatureOf(change.location);
     if (signature === this.lastSignature) return;
+    const operation = change.navigationId ?? change.location.navigationId;
+    if (
+      this.options.navigationStrategy !== 'serial' &&
+      !this.nativeCommits.size &&
+      (!operation || !this.observedNavigations.has(operation))
+    )
+      this.activeController?.abort(new Error('External navigation superseded the pending address'));
     this.applyLocation(
       { ...change.location, navigationId: change.navigationId ?? change.location.navigationId },
       true,
       change.source,
       change.source !== 'plus' && !change.navigationId && !change.location.navigationId,
     );
-    const operation = change.navigationId ?? change.location.navigationId;
     if (operation && this.observedNavigations.has(operation))
       this.observedNavigations.set(operation, this.context);
   }
@@ -483,6 +564,17 @@ export class RouterPlusImpl implements RouterPlus, CommandHost {
       /* A diagnostic sink cannot interrupt source cleanup. */
     }
   }
+  /** Native state follows the committed address again when a guard rejects its proposed update. */
+  private finishStateAddress(result: CommandResult, id: string): void {
+    if (result.ok || result.reason === 'superseded') return;
+    this.bindingDiagnostic(
+      new Error(`State address update failed: ${id}: ${result.reason}`),
+      'state.address',
+    );
+    if (!result.committed && !this.disposed && (this.context.instance || this.globalSources.size))
+      this.scheduleStateRestore(this.context);
+  }
+
   private ownBinding(release: () => void): () => void {
     let cleanup: (() => void) | undefined = release;
     const stop = () => {
@@ -498,6 +590,15 @@ export class RouterPlusImpl implements RouterPlus, CommandHost {
     this.bindingCleanups.add(stop);
     return stop;
   }
+  private releaseBindings(...releases: ((() => void) | undefined)[]): void {
+    for (const release of releases) {
+      try {
+        release?.();
+      } catch (error) {
+        this.bindingDiagnostic(error, 'state.cleanup');
+      }
+    }
+  }
   private bindSource(
     context: PageContext,
     id: string,
@@ -505,6 +606,13 @@ export class RouterPlusImpl implements RouterPlus, CommandHost {
     rules: StateField,
     global: boolean,
   ): () => void {
+    const declared = !global ? this.catalog.declaredStates.get(context.pageId!)?.[id] : undefined;
+    if (declared?.catalog)
+      rules = {
+        ...declared,
+        ...Object.fromEntries(Object.entries(rules).filter(([, value]) => value !== undefined)),
+        default: declared.default,
+      };
     let stop: (() => void) | undefined;
     try {
       this.bindingBatch(() => {
@@ -522,22 +630,155 @@ export class RouterPlusImpl implements RouterPlus, CommandHost {
       this.bindingDiagnostic(error, 'state.registration');
       throw error;
     }
-    return this.ownBinding(stop!);
+    if (!hasLiveStateRules(rules)) return this.ownBinding(stop!);
+    let wasReady: boolean;
+    try {
+      wasReady = stateReady(rules);
+    } catch (error) {
+      this.releaseBindings(stop);
+      throw error;
+    }
+    const validity = () => {
+      if (!stateReady(rules)) return 'pending';
+      let addressValid = false;
+      try {
+        addressValid = validState(
+          rules,
+          decodeQuery(id, rules, new URLSearchParams(this.context.search), source.read()),
+        );
+      } catch {
+        /* Decode failure remains an invalid address, diagnosed at the restore boundary. */
+      }
+      let projection: string | null = null;
+      try {
+        projection = encodeQuery(id, rules, source.read()).toString();
+      } catch {
+        /* Invalid native values are handled by the source notification boundary. */
+      }
+      return JSON.stringify([validState(rules, source.read()), addressValid, projection]);
+    };
+    let previousValidity: string;
+    try {
+      previousValidity = validity();
+    } catch (error) {
+      this.releaseBindings(stop);
+      throw error;
+    }
+    let editedWhilePending = false;
+    // A temporary baseline distinguishes address edits from local-only object edits while codecs wait.
+    let pendingBaseline = wasReady ? undefined : snapshotSource(source.read());
+    const refresh = (changed = false) => {
+      const ready = stateReady(rules);
+      const nextValidity = validity();
+      // Keep reactive readiness/validator dependencies observed even while a retained page is hidden.
+      if (!global && context.instance?.stateKey !== this.context.instance?.stateKey) return;
+      if (!wasReady && changed) editedWhilePending = true;
+      if (ready === wasReady && changed) {
+        previousValidity = nextValidity;
+        return;
+      }
+      if (ready === wasReady && nextValidity === previousValidity) return;
+      wasReady = ready;
+      previousValidity = nextValidity;
+      if (!ready) {
+        pendingBaseline = snapshotSource(source.read());
+        return;
+      }
+      const addressEdited =
+        editedWhilePending && !sameQueryState(id, rules, pendingBaseline, source.read());
+      editedWhilePending = false;
+      pendingBaseline = undefined;
+      if (
+        addressEdited &&
+        validState(rules, source.read()) &&
+        context.instance?.stateKey === this.context.instance?.stateKey
+      ) {
+        void this.setState(source.read(), id)
+          .then((result) => this.finishStateAddress(result, id))
+          .catch((error) => this.bindingDiagnostic(error, 'state.ready'));
+      } else {
+        this.applyLocation(this.location, false, 'native', false);
+      }
+    };
+    const ownedAddress = () => {
+      const query = new URLSearchParams(this.context.search);
+      return JSON.stringify([
+        this.context.instance?.stateKey,
+        this.context.pathname,
+        queryKeys(id, rules).map((key) => [key, query.getAll(key)]),
+      ]);
+    };
+    let previousAddress = ownedAddress();
+    let stopChanges: (() => void) | undefined;
+    let stopLocation: (() => void) | undefined;
+    let stopObserve: (() => void) | undefined;
+    let observing = true;
+    try {
+      {
+        stopChanges = source.subscribe?.(() => {
+          if (!stateReady(rules)) editedWhilePending = true;
+          else refresh(true);
+        });
+        stopLocation = this.bus.subscribe((event) => {
+          if (event.type === 'location') {
+            const address = ownedAddress();
+            if (address !== previousAddress) editedWhilePending = false;
+            previousAddress = address;
+            if (stateReady(rules) !== wasReady) this.refreshBinding(source);
+          }
+        });
+      }
+      // Publish before subscribing so an initial native notification can re-evaluate immediately.
+      this.bindingRefresh.set(source, refresh);
+      if (rules.observe) {
+        const cleanup: unknown = rules.observe(() => {
+          if (observing) this.refreshBinding(source);
+        });
+        if (typeof cleanup !== 'function') {
+          // An accidental async subscription may allocate later; retire its eventual resource too.
+          void Promise.resolve(cleanup)
+            .then((release) => {
+              if (typeof release === 'function') release();
+            })
+            .catch((error) => this.bindingDiagnostic(error, 'state.cleanup'));
+          throw new TypeError('State observe must return a synchronous cleanup function');
+        }
+        stopObserve = cleanup as () => void;
+      }
+    } catch (error) {
+      observing = false;
+      this.bindingRefresh.delete(source);
+      this.releaseBindings(stopObserve, stopChanges, stopLocation, stop);
+      throw error;
+    }
+    return this.ownBinding(() => {
+      observing = false;
+      this.bindingRefresh.delete(source);
+      this.releaseBindings(stopObserve, stopChanges, stopLocation, stop);
+    });
   }
 
-  private readonly globalSources = new Map<
-    string,
-    {
-      source: PageStateBridge;
-      rules: StateField;
-      stop?: () => void;
-      restoring: boolean;
-      published?: boolean;
-    }
-  >();
+  private readonly globalSources = new Map<string, GlobalSourceEntry>();
+
+  private queueGlobal<T>(entry: GlobalSourceEntry, run: () => Promise<T>): Promise<T> {
+    const next = (entry.queue ?? Promise.resolve()).catch(() => {}).then(run);
+    entry.queue = next;
+    return next;
+  }
 
   /** Publish lifecycle metadata from the existing indexes, with no parallel source registry. */
-  private sourceCommitted(source: PageStateBridge, context: PageContext): void {
+  private readonly bindingRefresh = new WeakMap<PageStateBridge, (changed?: boolean) => void>();
+
+  private refreshBinding(source: PageStateBridge, changed = false): void {
+    try {
+      this.bindingRefresh.get(source)?.(changed);
+    } catch (error) {
+      this.bindingDiagnostic(error, 'state.ready');
+    }
+  }
+
+  private sourceCommitted(source: PageStateBridge, context: PageContext, changed = false): void {
+    this.refreshBinding(source, changed);
     for (const [id, entry] of this.globalSources)
       if (entry.source === source && entry.published)
         this.bus.emit({
@@ -551,13 +792,7 @@ export class RouterPlusImpl implements RouterPlus, CommandHost {
   private bindGlobalSource(id: string, source: PageStateBridge, rules: StateField): () => void {
     if (this.disposed) throw new Error('Router Plus disposed');
     if (this.globalSources.has(id)) throw new Error(`Duplicate global source: ${id}`);
-    const entry = { source, rules, restoring: false } as {
-      source: PageStateBridge;
-      rules: StateField;
-      stop?: () => void;
-      restoring: boolean;
-      published?: boolean;
-    };
+    const entry: GlobalSourceEntry = { source, rules, restoring: false };
     if (queryKeys(id, rules).length && !source.write)
       throw new Error(`Readonly query source: ${id}`);
     const owned = queryKeys(id, rules);
@@ -607,15 +842,12 @@ export class RouterPlusImpl implements RouterPlus, CommandHost {
           if (
             !initializing &&
             !entry.restoring &&
+            stateReady(rules) &&
             queryKeys(id, rules).length &&
             !sameQueryState(id, rules, source.read(), this.context.values[id])
           )
             void this.setState(source.read(), id).then((result) => {
-              if (!result.ok)
-                this.bindingDiagnostic(
-                  new Error(`Global source sync failed: ${id}: ${result.reason}`),
-                  'state.global',
-                );
+              this.finishStateAddress(result, id);
             });
         });
       });
@@ -628,7 +860,7 @@ export class RouterPlusImpl implements RouterPlus, CommandHost {
           source: describeSource(id, source, rules, null),
         });
       });
-      if (this.context.instance)
+      if (queryKeys(id, rules).length)
         this.deferBinding(
           () => this.applyLocation(this.location, false, 'native', false),
           'address',
@@ -641,24 +873,30 @@ export class RouterPlusImpl implements RouterPlus, CommandHost {
   }
 
   private async syncGlobalSources(context: PageContext): Promise<void> {
+    const active = () => sameAddress(context, this.context);
     for (const [id, entry] of this.globalSources) {
-      if (
-        !entry.source.write ||
-        !queryKeys(id, entry.rules).length ||
-        sameQueryState(id, entry.rules, entry.source.read(), context.values[id])
-      )
-        continue;
-      entry.restoring = true;
-      try {
-        await entry.source.write(
-          restoreQuery(id, entry.rules, new URLSearchParams(context.search), entry.source.read()),
-        );
-      } catch (error) {
-        // A failed native write from an unregistered source cannot poison a newer restore.
-        if (!this.disposed && this.globalSources.get(id) === entry) throw error;
-      } finally {
-        entry.restoring = false;
-      }
+      if (!queryKeys(id, entry.rules).length) continue;
+      await this.queueGlobal(entry, async () => {
+        if (
+          this.disposed ||
+          this.globalSources.get(id) !== entry ||
+          !active() ||
+          !entry.source.write ||
+          !stateReady(entry.rules) ||
+          sameQueryState(id, entry.rules, entry.source.read(), context.values[id])
+        )
+          return;
+        entry.restoring = true;
+        try {
+          await entry.source.write(
+            restoreQuery(id, entry.rules, new URLSearchParams(context.search), entry.source.read()),
+          );
+        } catch (error) {
+          if (!this.disposed && this.globalSources.get(id) === entry && active()) throw error;
+        } finally {
+          entry.restoring = false;
+        }
+      });
     }
   }
 
@@ -666,19 +904,21 @@ export class RouterPlusImpl implements RouterPlus, CommandHost {
   private readonly stateRestoreFailures = new Map<string, unknown>();
 
   private scheduleStateRestore(context: PageContext): void {
-    this.deferBinding(() => this.runStateRestore(context), `restore:${context.instance!.stateKey}`);
+    this.deferBinding(
+      () => this.runStateRestore(context),
+      `restore:${context.instance?.stateKey ?? 'global'}`,
+    );
   }
 
   private runStateRestore(context: PageContext): void {
-    const key = context.instance!.stateKey;
-    const task = this.state
-      .syncNavigation(context)
+    const key = context.instance?.stateKey ?? 'global';
+    const task = (context.instance ? this.state.syncNavigation(context) : Promise.resolve())
       .then(() => this.syncGlobalSources(context))
       .then(() => {
-        this.stateRestoreFailures.delete(key);
+        if (sameAddress(context, this.context)) this.stateRestoreFailures.delete(key);
       })
       .catch((error) => {
-        this.stateRestoreFailures.set(key, error);
+        if (sameAddress(context, this.context)) this.stateRestoreFailures.set(key, error);
         this.bindingDiagnostic(error, 'state.navigation.restore');
       })
       .finally(() => this.stateRestores.delete(task));
@@ -690,8 +930,8 @@ export class RouterPlusImpl implements RouterPlus, CommandHost {
 
   private diagnoseStateQuery(context: PageContext): void {
     const query = new URLSearchParams(context.search);
-    for (const [id, field] of Object.entries(stateFields(this.definitionOf(context.pageId)))) {
-      if (!queryKeys(id, field).some((key) => query.has(key))) continue;
+    for (const [id, field] of Object.entries(this.fieldsForContext(context))) {
+      if (!stateReady(field) || !queryKeys(id, field).some((key) => query.has(key))) continue;
       try {
         const value = decodeQuery(id, field, query);
         if (!validState(field, value))
@@ -740,6 +980,7 @@ export class RouterPlusImpl implements RouterPlus, CommandHost {
       this.options.pageLink,
       this.historyRecord,
       this.instanceKeyStrategies,
+      this.bindingFields,
     );
     this.diagnoseStateQuery(this.context);
     const bound = this.context.instance
@@ -747,8 +988,13 @@ export class RouterPlusImpl implements RouterPlus, CommandHost {
       : undefined;
     if (bound) bound.context = this.context;
     this.state.updateContext(this.context);
-    if (this.context.instance) this.scheduleStateRestore(this.context);
+    if (this.context.instance || this.globalSources.size || this.stateRestoreFailures.has('global'))
+      this.scheduleStateRestore(this.context);
     this.manageRetention(previousInstance);
+    // Retention may replace instance metadata, including a manually retained page on re-entry.
+    const finalized = this.context.instance && this.scopes.get(this.context.instance.stateKey);
+    if (finalized) finalized.context = this.context;
+    this.state.updateContext(this.context);
     if (previousInstance?.stateKey !== this.context.instance?.stateKey) {
       try {
         if (previousInstance && this.isRetained(previousInstance))
@@ -792,6 +1038,8 @@ export class RouterPlusImpl implements RouterPlus, CommandHost {
 
   private manageRetention(previousInstance: PageInstance | null): void {
     const next = this.context.instance;
+    if (next && this.isRetained(next) && !next.retained)
+      this.context = { ...this.context, instance: { ...next, retained: true } };
     if (next) {
       const definition = this.definitionOf(next.pageId);
       if (definition?.retain) {
@@ -1035,6 +1283,25 @@ export class RouterPlusImpl implements RouterPlus, CommandHost {
     return this.navigate(target, { ...options, replace: true });
   }
 
+  /** Apply partial URL edits through the same queue used by framework query helpers. */
+  patchQuery(
+    patch: import('./types.js').QueryRecord,
+    options?: NavigateOptions,
+  ): Promise<CommandResult> {
+    const pending = this.notReady();
+    return pending ? Promise.resolve(pending) : patchPageQuery(this, patch, options);
+  }
+
+  /** Native redirects may publish a different href while this owned commit is in progress. */
+  private async commitAddress(request: Parameters<RouterConnection['commit']>[0]) {
+    this.nativeCommits.add(request.navigationId);
+    try {
+      return await this.connection!.commit(request);
+    } finally {
+      this.nativeCommits.delete(request.navigationId);
+    }
+  }
+
   private async performNavigation(
     plan: Extract<NavigationPlan, { kind: 'page' }>,
     options: NavigateOptions,
@@ -1124,6 +1391,7 @@ export class RouterPlusImpl implements RouterPlus, CommandHost {
         this.instanceKeyStrategies,
         plan.tab,
         plan.values,
+        this.bindingFields,
       );
       let redirects = 0;
       for (;;) {
@@ -1177,6 +1445,7 @@ export class RouterPlusImpl implements RouterPlus, CommandHost {
           this.instanceKeyStrategies,
           plan.tab,
           plan.values,
+          this.bindingFields,
         );
       }
 
@@ -1192,7 +1461,7 @@ export class RouterPlusImpl implements RouterPlus, CommandHost {
         tab: toContext.tab,
         values: Object.fromEntries(
           Object.entries(toContext.values).filter(
-            ([id]) => !queryKeys(id, stateFields(this.definitionOf(toContext.pageId))[id]).length,
+            ([id]) => !queryKeys(id, this.fieldsForContext(toContext)[id]).length,
           ),
         ),
       };
@@ -1201,7 +1470,7 @@ export class RouterPlusImpl implements RouterPlus, CommandHost {
       const replace = mode === 'replace' || options.replace === true || plan.replace === true;
       const requestOptions: NavigateOptions = { ...options, replace };
       signal.throwIfAborted();
-      const receipt = await this.connection!.commit({
+      const receipt = await this.commitAddress({
         navigationId,
         href: plan.href,
         path: parts.pathname,
@@ -1277,9 +1546,9 @@ export class RouterPlusImpl implements RouterPlus, CommandHost {
       if (!alreadyApplied) this.applyLocation(committedLocation, true, 'plus', false);
       const committedContext = observed ?? this.context;
       await Promise.all(this.stateRestores);
-      const restoreError = committedContext.instance
-        ? this.stateRestoreFailures.get(committedContext.instance.stateKey)
-        : undefined;
+      const restoreError = this.stateRestoreFailures.get(
+        committedContext.instance?.stateKey ?? 'global',
+      );
       if (restoreError)
         return {
           ok: false,
@@ -1469,7 +1738,8 @@ export class RouterPlusImpl implements RouterPlus, CommandHost {
     }
   }
 
-  private readonly pendingStateValues = new Map<string, Map<string, { value: unknown }>>();
+  private readonly stateCommits = new Map<string, Promise<CommandResult>>();
+  private readonly pendingStateValues = new Map<string, Map<string, PendingState>>();
 
   /** Merge concurrent source changes before committing a single address projection. */
   private async navigateState(
@@ -1478,37 +1748,125 @@ export class RouterPlusImpl implements RouterPlus, CommandHost {
     context: PageContext,
     facade: RouterPlus,
   ): Promise<CommandResult> {
+    const field = this.fieldsForContext(context)[id];
+    if (field && !stateReady(field)) return { ok: false, reason: 'not-ready' };
     const global = this.globalSources.get(id),
       current = global
         ? () => !this.disposed && this.globalSources.get(id) === global
         : this.state.bridgeGuard(id, context);
-    const scopeKey = context.instance!.stateKey;
-    const pending = this.pendingStateValues.get(scopeKey) ?? new Map<string, { value: unknown }>();
+    const scopeKey = context.instance?.stateKey ?? JSON.stringify(['global', context.pathname]);
+    const pending = this.pendingStateValues.get(scopeKey) ?? new Map<string, PendingState>();
     this.pendingStateValues.set(scopeKey, pending);
-    const request = { value };
+    const request: PendingState = { value, active: current, issued: false, context };
     pending.set(id, request);
     try {
-      const values = { ...context.values, ...this.state.navigationValues(context) };
-      for (const [key, source] of this.globalSources)
-        if (queryKeys(key, source.rules).length && validState(source.rules, source.source.read()))
-          values[key] = source.source.read();
-      for (const [key, entry] of pending) values[key] = entry.value;
-      const result = await facade.navigate(
-        { path: context.path, values },
-        { replace: true, state: context.location.state },
-      );
+      let commit = this.stateCommits.get(scopeKey);
+      if (!commit) {
+        commit = Promise.resolve().then(() => {
+          this.stateCommits.delete(scopeKey);
+          if (this.disposed) return { ok: false, reason: 'cancelled' } as CommandResult;
+          if (facade.getContext().path !== context.path)
+            return { ok: false, reason: 'superseded' } as CommandResult;
+          for (const key of [...pending.keys()]) {
+            if (
+              !pending.get(key)!.active() ||
+              !sameAddress(pending.get(key)!.context, context) ||
+              !stateReady(this.fieldsForContext(context)[key] ?? {})
+            )
+              pending.delete(key);
+          }
+          const values = {
+            ...context.values,
+            ...(context.instance ? this.state.navigationValues(context) : {}),
+          };
+          for (const [key, source] of this.globalSources)
+            if (
+              queryKeys(key, source.rules).length &&
+              validState(source.rules, source.source.read())
+            )
+              values[key] = source.source.read();
+          for (const [key, entry] of pending) values[key] = entry.value;
+          for (const key of Object.keys(values))
+            if (!stateReady(this.fieldsForContext(context)[key] ?? {})) delete values[key];
+          if (!pending.size) return { ok: false, reason: 'cancelled' } as CommandResult;
+          const issued = [...pending.values()];
+          for (const entry of pending.values()) entry.issued = true;
+          return updateStateQuery(
+            facade,
+            values,
+            [...pending.keys()],
+            this.fieldsForContext(context),
+            {
+              replace: ![...pending.keys()].some(
+                (key) => this.fieldsForContext(context)[key]?.history === 'push',
+              ),
+              state: context.location.state,
+            },
+            () => issued.every((entry) => entry.active()),
+          );
+        });
+        this.stateCommits.set(scopeKey, commit);
+      }
+      const result = await commit;
+      if (current() && pending.get(id) !== request) return { ok: false, reason: 'superseded' };
       return current()
         ? result
         : {
             ok: false,
             reason: 'cancelled',
             navigationId: result.ok ? undefined : result.navigationId,
-            committed: result.ok || result.committed,
+            committed: request.issued && (result.ok || result.committed),
           };
+    } catch (error) {
+      return { ok: false, reason: 'failed', message: toErrorMessage(error) };
     } finally {
       if (pending.get(id) === request) pending.delete(id);
       if (!pending.size) this.pendingStateValues.delete(scopeKey);
     }
+  }
+
+  private pendingValue(context: PageContext, id: string, read: () => unknown): unknown {
+    const key = context.instance?.stateKey ?? JSON.stringify(['global', context.pathname]);
+    const request = this.pendingStateValues.get(key)?.get(id);
+    return request?.active() && sameAddress(request.context, context) ? request.value : read();
+  }
+
+  private patchNavigationState(
+    context: PageContext,
+    facade: RouterPlus,
+    id: string,
+    patch: Record<string, unknown>,
+  ): Promise<CommandResult> {
+    const current = this.pendingValue(context, id, () => facade.getState(id));
+    return facade.setState({ ...(isPlainObject(current) ? current : {}), ...patch }, id);
+  }
+
+  /** Global native setters and address restoration share one source-owned serial queue. */
+  private changeGlobal(id: string, update: (current: unknown) => unknown): Promise<CommandResult> {
+    const entry = this.globalSources.get(id)!;
+    if (queryKeys(id, entry.rules).length)
+      return this.setState(
+        update(this.pendingValue(this.context, id, () => entry.source.read())),
+        id,
+      );
+    return this.queueGlobal(entry, async () => {
+      if (this.disposed || this.globalSources.get(id) !== entry)
+        return { ok: false, reason: 'cancelled' };
+      if (!entry.source.write) return { ok: false, reason: 'state-readonly' };
+      try {
+        const value = update(entry.source.read());
+        if (!validState(entry.rules, value)) return { ok: false, reason: 'invalid-target' };
+        await entry.source.write(value);
+        return !this.disposed && this.globalSources.get(id) === entry
+          ? { ok: true }
+          : { ok: false, reason: 'cancelled' };
+      } catch (error) {
+        if (this.disposed || this.globalSources.get(id) !== entry)
+          return { ok: false, reason: 'cancelled' };
+        this.bindingDiagnostic(error, 'state.write');
+        return { ok: false, reason: 'failed', message: toErrorMessage(error) };
+      }
+    });
   }
 
   async setState(value: unknown, key = 'default'): Promise<CommandResult> {
@@ -1516,7 +1874,6 @@ export class RouterPlusImpl implements RouterPlus, CommandHost {
     try {
       const path = this.globalPath(key);
       if (path?.keys.length) {
-        const root = this.getState<Record<string, unknown>>(path.id);
         const update = (
           current: Record<string, unknown>,
           keys: string[],
@@ -1528,31 +1885,19 @@ export class RouterPlusImpl implements RouterPlus, CommandHost {
             [head]: tail.length ? update(current[head] as Record<string, unknown>, tail) : value,
           };
         };
-        return this.setState(update(root, path.keys), path.id);
+        return this.changeGlobal(path.id, (root) =>
+          update(root as Record<string, unknown>, path.keys),
+        );
       }
       const global = this.globalSources.get(key);
       if (global && !validState(global.rules, value))
         return { ok: false, reason: 'invalid-target' };
-      if (global && !queryKeys(key, global.rules).length) {
-        if (!global.source.write) return { ok: false, reason: 'state-readonly' };
-        try {
-          await global.source.write(value);
-          return this.globalSources.get(key) === global && !this.disposed
-            ? { ok: true }
-            : { ok: false, reason: 'cancelled' };
-        } catch (error) {
-          if (this.globalSources.get(key) !== global || this.disposed)
-            return { ok: false, reason: 'cancelled' };
-          this.bindingDiagnostic(error, 'state.write');
-          return { ok: false, reason: 'failed', message: toErrorMessage(error) };
-        }
-      }
+      if (global && !queryKeys(key, global.rules).length)
+        return await this.changeGlobal(key, () => value);
+      if (global) return await this.navigateState(value, key, this.context, this);
       if (
-        stateFields(this.definitionOf(this.context.pageId))[key]?.navigation !== false &&
-        Object.hasOwn(
-          stateFields(this.definitionOf(this.context.pageId), this.options.pageLink?.tabKey),
-          key,
-        )
+        this.fieldsForContext(this.context)[key]?.navigation !== false &&
+        Object.hasOwn(this.fieldsForContext(this.context), key)
       )
         return await this.navigateState(value, key, this.context, this);
       return await this.state.write(value, key);
@@ -1564,15 +1909,19 @@ export class RouterPlusImpl implements RouterPlus, CommandHost {
   async patchState(value: Record<string, unknown>, key = 'default'): Promise<CommandResult> {
     if (this.disposed) return { ok: false, reason: 'cancelled' };
     try {
-      if (this.globalPath(key))
-        return this.setState(
-          { ...(this.getState<Record<string, unknown>>(key) ?? {}), ...value },
-          key,
-        );
-      if (Object.hasOwn(stateFields(this.definitionOf(this.context.pageId)), key)) {
-        const current = this.getState(key);
-        return await this.setState({ ...(isPlainObject(current) ? current : {}), ...value }, key);
+      const global = this.globalPath(key);
+      if (global) {
+        const patch = (current: unknown, keys: readonly string[]): unknown => {
+          if (!keys.length) return { ...(isPlainObject(current) ? current : {}), ...value };
+          const [head, ...tail] = keys;
+          if (!isPlainObject(current) || !Object.hasOwn(current, head))
+            throw new Error(`Unknown store field: ${key}`);
+          return { ...current, [head]: patch(current[head], tail) };
+        };
+        return await this.changeGlobal(global.id, (current) => patch(current, global.keys));
       }
+      if (Object.hasOwn(this.fieldsForContext(this.context), key))
+        return await this.patchNavigationState(this.context, this, key, value);
       return await this.state.patch(value, key);
     } catch (error) {
       return { ok: false, reason: 'state-unknown', message: toErrorMessage(error) };
@@ -1582,9 +1931,17 @@ export class RouterPlusImpl implements RouterPlus, CommandHost {
   async resetState(key = 'default'): Promise<CommandResult> {
     if (this.disposed) return { ok: false, reason: 'cancelled' };
     try {
-      const global = this.globalSources.get(key);
-      if (global) return this.setState(global.rules.default, key);
-      const field = stateFields(this.definitionOf(this.context.pageId))[key];
+      const path = this.globalPath(key);
+      if (path) {
+        let value: unknown = this.globalSources.get(path.id)!.rules.default;
+        for (const part of path.keys) {
+          if (!isPlainObject(value) || !Object.hasOwn(value, part))
+            return { ok: false, reason: 'state-unknown' };
+          value = value[part];
+        }
+        return this.setState(snapshotSource(value), key);
+      }
+      const field = this.fieldsForContext(this.context)[key];
       if (field) return await this.setState(field.default, key);
       return await this.state.reset(key);
     } catch (error) {
@@ -1619,8 +1976,15 @@ export class RouterPlusImpl implements RouterPlus, CommandHost {
       if (!definition?.states) throw new Error('State registration requires a page');
       const fields = definition.states as Record<string, StateField>;
       const existing = fields[id];
-      if (existing && !sameState(existing, existing.default, options.default) && existing.catalog)
-        options = { ...options, default: existing.default };
+      const declared = this.catalog.declaredStates.get(context.pageId!)?.[id];
+      if (declared)
+        options = {
+          ...declared,
+          ...Object.fromEntries(Object.entries(options).filter(([, value]) => value !== undefined)),
+          default: declared.default,
+        };
+      if (queryKeys(id, options).length && !bridge.write)
+        throw new Error(`Navigation state requires a writable bridge: ${id}`);
       if (!validState(options, options.default)) throw new Error(`Invalid default state: ${id}`);
       const owned = queryKeys(id, options);
       for (const [key, field] of Object.entries(fields))
@@ -1735,7 +2099,7 @@ export class RouterPlusImpl implements RouterPlus, CommandHost {
   }
 
   async setTab(tab: string): Promise<CommandResult> {
-    if (!Object.hasOwn(stateFields(this.definitionOf(this.context.pageId)), 'tab'))
+    if (!Object.hasOwn(this.fieldsForContext(this.context), 'tab'))
       return { ok: false, reason: 'invalid-tab' };
     return this.setState(tab, 'tab');
   }
@@ -1747,6 +2111,9 @@ export class RouterPlusImpl implements RouterPlus, CommandHost {
     const retained = { ...instance, retained: true };
     this.retention.add(retained);
     this.context = { ...this.context, instance: retained };
+    const scope = this.scopes.get(retained.stateKey);
+    if (scope) scope.context = this.context;
+    this.state.updateContext(this.context);
     this.bus.emit({ type: 'retain', instance: retained });
     return { ok: true, value: retained };
   }
@@ -1804,6 +2171,7 @@ export class RouterPlusImpl implements RouterPlus, CommandHost {
       this.options.pageLink,
       readHistoryState(target.state, this.historyStateKey),
       this.instanceKeyStrategies,
+      this.bindingFields,
     );
     for (const [phase, context] of [
       ['beforeLeave', this.context],
@@ -1851,6 +2219,8 @@ export class RouterPlusImpl implements RouterPlus, CommandHost {
     };
     const overrides: Partial<RouterPlus> = {
       scope: (value) => (value ? this.scope(value) : record.facade),
+      patchQuery: (patch, options) =>
+        stateCall(() => patchPageQuery(record.facade, patch, options)),
       navigate: async (target, options) => {
         if (!record.alive) return { ok: false, reason: 'cancelled' };
         const readiness = this.notReady();
@@ -1888,8 +2258,8 @@ export class RouterPlusImpl implements RouterPlus, CommandHost {
         stateCall(() =>
           this.globalPath(name) !== null
             ? this.setState(value, name)
-            : stateFields(this.definitionOf(live().pageId))[name]?.navigation !== false &&
-                Object.hasOwn(stateFields(this.definitionOf(live().pageId)), name)
+            : this.fieldsForContext(live())[name]?.navigation !== false &&
+                Object.hasOwn(this.fieldsForContext(live()), name)
               ? this.navigateState(value, name, live(), record.facade)
               : this.state.write(value, name, live()),
         ),
@@ -1897,22 +2267,14 @@ export class RouterPlusImpl implements RouterPlus, CommandHost {
         stateCall(() =>
           this.globalPath(name)
             ? this.patchState(value, name)
-            : Object.hasOwn(stateFields(this.definitionOf(live().pageId)), name)
-              ? record.facade.setState(
-                  {
-                    ...(isPlainObject(record.facade.getState(name))
-                      ? record.facade.getState<Record<string, unknown>>(name)
-                      : {}),
-                    ...value,
-                  },
-                  name,
-                )
+            : Object.hasOwn(this.fieldsForContext(live()), name)
+              ? this.patchNavigationState(live(), record.facade, name, value)
               : this.state.patch(value, name, live()),
         ),
       resetState: (name = 'default') =>
         stateCall(() => {
           if (this.globalPath(name)) return this.resetState(name);
-          const field = stateFields(this.definitionOf(live().pageId))[name];
+          const field = this.fieldsForContext(live())[name];
           return field
             ? record.facade.setState(field.default, name)
             : this.state.reset(name, live());
@@ -1951,6 +2313,7 @@ export class RouterPlusImpl implements RouterPlus, CommandHost {
         await Promise.all(this.pendingPlugins);
         await this.state.ready(live());
         await Promise.all(this.hostTasks.values());
+        await Promise.all(this.stateRestores);
       },
       snapshot: async () => ({
         version: 1,
@@ -1996,9 +2359,13 @@ export class RouterPlusImpl implements RouterPlus, CommandHost {
       },
     });
     const facade = record.facade;
+    attachQueryOwner(facade, this);
     attachBindingHost(facade, {
-      committed: (source) => {
-        if (record.alive) this.sourceCommitted(source, record.context);
+      committed: (source, changed) => {
+        if (record.alive) this.sourceCommitted(source, record.context, changed);
+      },
+      refresh: (source) => {
+        if (record.alive) this.refreshBinding(source);
       },
       prepare: (context) => this.prepareScope(context),
       batch: (run) => this.bindingBatch(run),
@@ -2193,6 +2560,7 @@ export class RouterPlusImpl implements RouterPlus, CommandHost {
     }
     this.globalSources.clear();
     this.pendingStateValues.clear();
+    this.stateCommits.clear();
     this.state.dispose();
     for (const scope of this.scopes.values()) scope.alive = false;
     this.scopes.clear();

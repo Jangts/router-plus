@@ -17,4 +17,5 @@
 - [维护资料](maintenance/README.md)：文档归属和检查记录，与当前使用合同分别维护。
 
 - [Router Plus SDK](../README.md)。
+- [应用接入](application-integration.md)：完整接线、原生状态与业务请求、守卫和保留页面。
 - [包维护记录](maintenance/0.4.6-review-and-release-2026-11-13.md)。

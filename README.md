@@ -26,6 +26,12 @@ TypeScript React applications also need `@types/react` and `@types/react-dom` as
 
 React >=18, React Router DOM >=6, Vue >=3.5 and Vue Router >=4.0.16 are optional peers. Install the stack you use; the React entry does not import Vue. Your application and Plus must resolve the same framework/router copies. For linked workspaces, configure your bundler's dependency deduplication when needed.
 
+## Tabs, filters and address restoration
+
+Register existing native values with `useReactState` / `useVueState`, or create them with `useRp*`. Use `query` for address binding, `history: 'push'` for traversable changes, `omitDefault` for compact URLs, and a synchronous `ready` predicate for asynchronous catalogs. Bindings restore navigation automatically; application synchronization watchers are not needed. See [complete address bindings](docs/state-bindings.md#complete-address-bindings) and [retained hosts](docs/frameworks.md#retained-rendering-hosts-and-owned-provider-lifetime).
+
+See [application integration recipes](docs/application-integration.md) for complete dashboard, asynchronous catalog, request lifecycle, guards and retained-route compositions.
+
 ## Development hot reload
 
 Pass `hmr: import.meta.hot` (Vite), `hmr: import.meta.webpackHot` (Webpack/Rspack/Rsbuild ESM), or `hmr: module.hot` (Webpack/Rspack CommonJS or Parcel) in the module creating your RP instance. The Core, React and Vue factories support this option. Keep framework remount ownership at the app entry; RP does not self-accept updates. See [HMR integration](docs/frameworks.md#hot-module-replacement).
@@ -70,7 +76,7 @@ createRoot(document.getElementById('root')!).render(
 
 Plain JS/TS can use `router: [BrowserRouter, { basename: '/' }]` or `router: createElement(BrowserRouter, { basename: '/' })`. Tuples infer the component's props; `[BrowserRouter]` is valid when no required props are needed. JSX, tuples and explicit React elements use the same connection.
 
-A Data Router instance is also supported:
+A Data Router instance is also supported with React Router DOM >=6.4 (6.0–6.3 use the declarative integration above):
 
 ```tsx
 const router = createBrowserRouter(routes);
@@ -137,7 +143,7 @@ await plus.back();
 
 Register navigable state before selecting it: for example, `{ path: '/beta/:id', title: 'Beta', states: { section: { default: 'summary', values: ['summary', 'details'], query: true } } }`. Targets may be URL strings, `{ path, values: { section: 'details' } }`, `{ pathname, search, hash }` or `{ page, params, query }`. A page id defaults to its path template. `pageLink: { scheme: 'example' }` enables semantic page links; explicit registered actions provide non-navigation links without executing effects while parsing.
 
-Commands return `{ ok: true, value? }` or `{ ok: false, reason, message?, ... }`. Guards, cancellation, invalid targets and missing capabilities have distinct outcomes. Successful navigation uses the connected router's actual commit, including redirects. Native pre-navigation interception depends on the router: Data Router and Vue adapters support it, while ordinary declarative React routers observe native commits and guard Plus-initiated navigation. A browser refresh cannot await asynchronous leave guards.
+Commands return `{ ok: true, value? }` or `{ ok: false, reason, message?, ... }`. Guards, cancellation, invalid targets and missing capabilities have distinct outcomes. Successful navigation uses the connected router's actual commit, including redirects. Native pre-navigation interception depends on the router: Vue adapters support it, and Data Router adapters support it when native blocker registration/state is available, while ordinary declarative React routers observe native commits and guard Plus-initiated navigation. A browser refresh cannot await asynchronous leave guards.
 
 ## Native state and retained views
 
@@ -207,7 +213,7 @@ Core can run without framework or DOM imports. Create a separate instance per SS
 ## Documentation and license
 
 - [Online documentation](https://router-plus-docs.pages.jangts.cafe/en/): guide, API reference and framework examples.
-- [Changelog](CHANGELOG.md): published version notes.
+- [Changelog](CHANGELOG.md): version change notes.
 - [API and connections](docs/api.md): construction, targets, receipts, guards and plugins.
 - [Framework integration](docs/frameworks.md): JSX/tuple/Data Router inputs, Vue installation, scopes and lifecycle ownership.
 - [State, SSR and interactions](docs/state-and-interaction.md): state bridges, persistence, snapshots, DOM targets and tours.
@@ -241,6 +247,10 @@ npm install @jangts/router-plus vue-router
 TypeScript React 应用还需要将 `@types/react` 与 `@types/react-dom` 安装为开发依赖。
 
 React >=18、React Router DOM >=6、Vue >=3.5、Vue Router >=4.0.16 均声明为可选 peer 依赖，只安装应用采用的框架即可；React 入口不导入 Vue。应用和 Plus 必须解析到同一份框架与 Router，关联 workspace 时可通过打包工具的依赖去重配置保证 Context 一致。
+
+## Tab、筛选与地址恢复
+
+已有原生状态使用 useReactState／useVueState，创建状态可用 useRp*。通过 query 绑定地址、history 选择可后退的切换、omitDefault 省略默认参数、ready 声明异步目录就绪条件；同步与恢复由库执行。完整示例见[状态绑定](docs/state-bindings.md#complete-address-bindings)，自定义保留宿主见[框架接入](docs/frameworks.md#retained-rendering-hosts-and-owned-provider-lifetime)。
 
 ## 开发热更新
 
@@ -286,7 +296,7 @@ createRoot(document.getElementById('root')!).render(
 
 纯 JS／TS 可以写成 `router: [BrowserRouter, { basename: '/' }]`，由 Plus 内部构造 Router 元素；也可以显式传入 `createElement(BrowserRouter, { basename: '/' })`。数组会推断原生组件的 props，全部参数可选时可简写 `[BrowserRouter]`。JSX、数组与显式元素共用同一连接机制。
 
-Data Router 可以直接传实例：
+React Router DOM >=6.4 的 Data Router 可以直接传实例；6.0–6.3 使用上面的声明式接入：
 
 ```tsx
 const router = createBrowserRouter(routes);
@@ -353,7 +363,7 @@ await plus.back();
 
 需要导航定位的状态先在页面定义登记，例如 `{ path: '/beta/:id', title: 'Beta', states: { section: { default: 'summary', values: ['summary', 'details'], query: true } } }`。导航目标支持 URL 字符串、`{ path, values: { section: 'details' } }`、`{ pathname, search, hash }` 和 `{ page, params, query }`；页面 id 默认取路径模板。配置 `pageLink: { scheme: 'example' }` 可启用语义页面链接，显式登记 action 可处理非页面动作；解析链接本身不执行副作用。
 
-命令返回 `{ ok: true, value? }` 或 `{ ok: false, reason, message?, ... }`，区分守卫拒绝、取消、非法目标和缺少能力。导航成功以底层 Router 的实际提交为准，包含最终重定向地址。原生跳转前能否拦截取决于 Router：Data Router 与 Vue 适配支持原生守卫；普通声明式 React Router 观察原生提交，并检查 Plus 发起的导航。浏览器刷新不能等待异步离开守卫。
+命令返回 `{ ok: true, value? }` 或 `{ ok: false, reason, message?, ... }`，区分守卫拒绝、取消、非法目标和缺少能力。导航成功以底层 Router 的实际提交为准，包含最终重定向地址。原生跳转前能否拦截取决于 Router：Vue 适配支持原生守卫，Data Router 在具备原生 blocker 登记和状态能力时支持拦截；普通声明式 React Router 观察原生提交，并检查 Plus 发起的导航。浏览器刷新不能等待异步离开守卫。
 
 ## 原生状态与保留视图
 
@@ -434,9 +444,11 @@ Core 可以在不加载框架或 DOM 的环境运行。SSR 每个请求创建独
 以下详细参考使用英文；本 README 的中英文部分提供对应的安装、接入与能力说明。
 
 - [在线文档](https://router-plus-docs.pages.jangts.cafe/zh/)：接入课程、API 参考与框架示例。
-- [修改日志](CHANGELOG.md)：已发布版本的变更说明。
+- [修改日志](CHANGELOG.md)：各版本的变更说明。
 - [API 与连接](docs/api.md)：构造、目标、回执、守卫与插件。
 - [框架接入](docs/frameworks.md)：JSX／数组／Data Router、Vue 安装、scope 和生命周期归属。
 - [状态、SSR 与交互](docs/state-and-interaction.md)：状态桥接、持久化、快照、DOM 目标和导览。
 
 Apache License 2.0，见 [LICENSE](LICENSE) 与 [NOTICE](NOTICE)。
+
+完整仪表盘、异步目录、业务请求、守卫与缓存路由接线见[应用完整接入](docs/application-integration.md)。

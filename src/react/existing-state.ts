@@ -1,7 +1,6 @@
 /** Existing React sources publish only committed accessors; abandoned renders stay private. */
 import {
   useContext,
-  useRef,
   useMemo,
   useReducer,
   useEffect,
@@ -12,7 +11,12 @@ import {
   type RefObject,
 } from 'react';
 import type { PageStateBridge, StateIdOrOptions, StateAccessor } from '../core/types.js';
-import { bindNativeSource, snapshotSource, publishNativeCommit } from '../core/native-bindings.js';
+import {
+  bindNativeSource,
+  snapshotSource,
+  publishNativeCommit,
+  liveBindingOptions,
+} from '../core/native-bindings.js';
 import { PlusContext } from './provider.js';
 
 type StateTuple<S> = readonly [S, Dispatch<SetStateAction<S>>];
@@ -74,11 +78,11 @@ const useCommit = typeof window === 'undefined' ? useEffect : useLayoutEffect;
  */
 export function useReactState<S>(
   source: StateTuple<S> | RefObject<S> | StateAccessor<S>,
-  idOrOptions?: StateIdOrOptions<S>,
+  idOrOptions?: StateIdOrOptions<NoInfer<S>>,
 ): void;
 export function useReactState<F extends (...args: never[]) => unknown>(
   source: F,
-  idOrOptions?: StateIdOrOptions<F>,
+  idOrOptions?: StateIdOrOptions<NoInfer<F>>,
 ): void;
 export function useReactState(source: unknown, options?: StateIdOrOptions<any>): void {
   const plus = useContext(PlusContext),
@@ -103,13 +107,19 @@ export function useReactState(source: unknown, options?: StateIdOrOptions<any>):
     () => ({ current: null }),
     [plus, id, context?.instance?.stateKey, Boolean(candidate?.write), Boolean(candidate?.call)],
   );
-  const initial = useRef<{ value: unknown } | null>(null);
+  const initial = useMemo<{ current: { value: unknown } | null }>(
+    () => ({ current: null }),
+    [committed],
+  );
   const initialCandidate =
     candidate && !initial.current ? snapshotSource(candidate.read()) : undefined;
-  const configuration = useRef(options),
-    owner = useRef(plus);
-  const listeners = useMemo(() => new Set<() => void>(), []),
-    previous = useRef<{ value: unknown } | null>(null);
+  const configuration = useMemo(() => ({ current: options }), [committed]),
+    owner = useMemo(() => ({ current: plus }), [committed]);
+  const listeners = useMemo(() => new Set<() => void>(), [committed]),
+    previous = useMemo<{ current: { value: unknown } | null }>(
+      () => ({ current: null }),
+      [committed],
+    );
   const [, publish] = useReducer((revision: number) => revision + 1, 0);
   const publications = useMemo(() => new Set<() => void>(), [committed]);
   const writable = Boolean(candidate?.write),
@@ -157,7 +167,7 @@ export function useReactState(source: unknown, options?: StateIdOrOptions<any>):
     return bindNativeSource(
       owner.current,
       bridge,
-      configuration.current! as StateIdOrOptions<unknown>,
+      liveBindingOptions(() => configuration.current! as StateIdOrOptions<unknown>),
       false,
       initial.current ?? undefined,
     );
@@ -171,7 +181,9 @@ export function useReactState(source: unknown, options?: StateIdOrOptions<any>):
   );
   useEffect(() => {
     if (!candidate) return;
-    if (owner.current) publishNativeCommit(owner.current, bridge);
+    const changed =
+      previous.current !== null && !Object.is(previous.current.value, committed.current!.read());
+    if (owner.current) publishNativeCommit(owner.current, bridge, changed);
     for (const resolve of publications) resolve();
     publications.clear();
     const value = committed.current!.read();

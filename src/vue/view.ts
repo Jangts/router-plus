@@ -35,9 +35,17 @@ export const RouterPlusRedirect = defineComponent({
   },
   setup(props) {
     const plus = useRouterPlus();
+    let stop: (() => void) | undefined;
     onMounted(() => {
-      void plus.navigate(props.to, { replace: props.replace, state: props.state });
+      stop = watch(
+        () => [props.to, props.replace, props.state],
+        () => {
+          void plus.navigate(props.to, { replace: props.replace, state: props.state });
+        },
+        { immediate: true, deep: true, flush: 'post' },
+      );
     });
+    onUnmounted(() => stop?.());
     return () => null;
   },
 });
@@ -47,15 +55,21 @@ export const RouterPlusView = defineComponent({
   props: {
     view: { type: [Object, Function] as PropType<Component>, default: undefined },
     cache: { type: Boolean, default: false },
+    host: { type: [Object, Function] as PropType<Component>, default: undefined },
   },
   setup(props) {
     const plus = useRouterPlus(),
       context = usePageContext();
     const entries = new Map<
       string,
-      { context: import('../core/types.js').PageContext; node: import('vue').VNode }
+      {
+        context: import('../core/types.js').PageContext;
+        node: import('vue').VNode;
+        generation: number;
+      }
     >();
     const revision = ref(0);
+    let generation = 0;
     const stop = plus.subscribe((event) => {
       if (event.type === 'release') {
         entries.delete(event.instance.stateKey);
@@ -75,18 +89,26 @@ export const RouterPlusView = defineComponent({
           void revision.value;
           const key = context.value.instance?.stateKey ?? context.value.path;
           const node = props.view ? h(props.view as Component) : Component;
-          if (!node) return null;
           for (const [id, entry] of entries)
             if (id !== key && !entry.context.instance?.retained && !props.cache) entries.delete(id);
-          if (route.fullPath === context.value.path)
-            entries.set(key, { context: context.value, node });
+          if (node && route.fullPath === context.value.path)
+            entries.set(key, {
+              context: context.value,
+              node,
+              generation: entries.get(key)?.generation ?? ++generation,
+            });
           return h(
             Fragment,
             null,
             [...entries].map(([id, entry]) =>
               h(
                 RouterPlusRetained,
-                { key: id, active: id === key, context: entry.context },
+                {
+                  key: `${id}:${entry.generation}`,
+                  active: id === key,
+                  context: entry.context,
+                  host: props.host,
+                },
                 { default: () => entry.node },
               ),
             ),
@@ -124,14 +146,14 @@ const ScopedBoundary = defineComponent({
     if (frozenRoute.value) nativeScopes.set(bound, frozenRoute.value);
     if (route) {
       watch(
-        () => route.fullPath,
+        () => [route.fullPath, context.value],
         () => {
           if (route.fullPath === bound.getContext().path) {
             frozenRoute.value = { ...route };
             nativeScopes.set(bound, frozenRoute.value);
           }
         },
-        { flush: 'sync' },
+        { flush: 'post' },
       );
       provide(
         routeLocationKey,
@@ -183,6 +205,7 @@ export const RouterPlusRetained = defineComponent({
   name: 'RouterPlusRetained',
   props: {
     active: { type: Boolean, required: true },
+    host: { type: [Object, Function] as PropType<Component>, default: undefined },
     context: {
       type: Object as PropType<import('../core/types.js').PageContext>,
       default: undefined,
@@ -198,13 +221,19 @@ export const RouterPlusRetained = defineComponent({
       },
     );
     return () =>
-      h(
-        'div',
-        {
-          hidden: !props.active,
-          'data-router-plus-retained': props.active ? 'active' : 'inactive',
-        },
-        h(RouterPlusBoundary, { context: frozen.value }, slots),
-      );
+      props.host
+        ? h(
+            props.host,
+            { active: props.active },
+            { default: () => h(RouterPlusBoundary, { context: frozen.value }, slots) },
+          )
+        : h(
+            'div',
+            {
+              hidden: !props.active,
+              'data-router-plus-retained': props.active ? 'active' : 'inactive',
+            },
+            h(RouterPlusBoundary, { context: frozen.value }, slots),
+          );
   },
 });

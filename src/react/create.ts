@@ -39,6 +39,8 @@ export type ReactRouterTuple<C extends ElementType = ElementType> = readonly [
 export type CreateReactRouterPlusOptions<C extends ElementType = ElementType> = (
   (CreateRouterPlusOptions & { readonly plus?: never }) | { readonly plus: RouterPlus }
 ) & {
+  /** Dispose an owned instance after the last Provider unmount; StrictMode probes are ignored. */
+  readonly disposeOnUnmount?: boolean;
   readonly router: ReactElement<{ children?: ReactNode }> | DataRouter | ReactRouterTuple<C>;
   /** Optional location adaptation for a JSX or tuple router, using its native hooks. */
   readonly hooks?: ReactRouterHooks;
@@ -53,20 +55,28 @@ function dataRouterHooks(router: DataRouter): ReactRouterHooks {
   const snapshot = () => router.state;
   const navigate: NavigateFunction = (to: To | number, options?: NavigateOptions) =>
     typeof to === 'number' ? router.navigate(to) : router.navigate(to, options);
+  const supportsBlocker =
+    typeof router.getBlocker === 'function' &&
+    typeof router.deleteBlocker === 'function' &&
+    typeof router.state.blockers?.get === 'function';
   return {
     useLocation: () => useSyncExternalStore(subscribe, snapshot, snapshot).location,
     useNavigate: () => navigate,
-    useBlocker(predicate) {
-      const key = useId();
-      const predicateRef = useRef(predicate);
-      predicateRef.current = predicate;
-      const state = useSyncExternalStore(subscribe, snapshot, snapshot);
-      useEffect(() => {
-        router.getBlocker(key, (transition) => predicateRef.current(transition));
-        return () => router.deleteBlocker(key);
-      }, [key]);
-      return state.blockers.get(key) ?? { state: 'unblocked' };
-    },
+    ...(supportsBlocker
+      ? {
+          useBlocker(predicate: Parameters<NonNullable<ReactRouterHooks['useBlocker']>>[0]) {
+            const key = useId();
+            const predicateRef = useRef(predicate);
+            predicateRef.current = predicate;
+            const state = useSyncExternalStore(subscribe, snapshot, snapshot);
+            useEffect(() => {
+              router.getBlocker(key, (transition) => predicateRef.current(transition));
+              return () => router.deleteBlocker(key);
+            }, [key]);
+            return state.blockers.get(key) ?? { state: 'unblocked' };
+          },
+        }
+      : {}),
   };
 }
 
@@ -74,7 +84,7 @@ function dataRouterHooks(router: DataRouter): ReactRouterHooks {
 export function createReactRouterPlus<C extends ElementType>(
   options: CreateReactRouterPlusOptions<C>,
 ): ReactRouterPlus {
-  const { router, hooks, plus: supplied, ...core } = options;
+  const { router, hooks, plus: supplied, disposeOnUnmount = false, ...core } = options;
   const candidate = Array.isArray(router) ? createElement(router[0], router[1]) : router;
   const element = isValidElement<{ children?: ReactNode }>(candidate) ? candidate : null;
   if (!element && (!router || typeof (router as DataRouter).subscribe !== 'function'))
@@ -92,7 +102,22 @@ export function createReactRouterPlus<C extends ElementType>(
   const Connection = createReactProvider(
     hooks ?? (element ? { useLocation, useNavigate } : dataRouterHooks(router as DataRouter)),
   );
+  const owners = new Set<symbol>();
+  let lifetime = 0;
   function Provider({ children }: { children?: ReactNode }) {
+    const identity = useRef(Symbol('router-provider'));
+    useEffect(() => {
+      owners.add(identity.current);
+      ++lifetime;
+      return () => {
+        owners.delete(identity.current);
+        const generation = ++lifetime;
+        if (disposeOnUnmount && !supplied)
+          queueMicrotask(() => {
+            if (!owners.size && lifetime === generation) void plus.dispose();
+          });
+      };
+    }, []);
     if (element)
       return cloneElement(
         element,

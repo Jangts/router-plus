@@ -10,6 +10,7 @@ import type {
   HighlightOptions,
   NavigateOptions,
   PageTarget,
+  QueryRecord,
   ScrollOptions,
   TargetRef,
   TourOptions,
@@ -20,6 +21,7 @@ import type { RouterCommand } from './types.js';
 export interface CommandHost {
   navigate(target: PageTarget, options?: NavigateOptions): Promise<CommandResult>;
   replace(target: PageTarget, options?: NavigateOptions): Promise<CommandResult>;
+  patchQuery(patch: QueryRecord, options?: NavigateOptions): Promise<CommandResult>;
   back(): Promise<CommandResult>;
   forward(): Promise<CommandResult>;
   go(delta: number): Promise<CommandResult>;
@@ -53,6 +55,7 @@ export const commandHandlers: {
 } = {
   navigate: (host, command) => host.navigate(command.target, command.options),
   replace: (host, command) => host.replace(command.target, command.options),
+  'query.patch': (host, command) => host.patchQuery(command.patch, command.options),
   back: (host) => host.back(),
   forward: (host) => host.forward(),
   go: (host, command) => host.go(command.delta),

@@ -31,7 +31,7 @@ Plus creates the router element internally. Props are inferred from the selected
 
 JSX props are preserved. The router element's existing children and Provider children are placed inside the Plus context. The element must provide React Router's native location/navigation context; BrowserRouter, HashRouter and MemoryRouter are supported. For JSX and tuple inputs, an optional `hooks` option adapts those hooks, for example to read an application's older history state.
 
-A Data Router instance uses its original route tree:
+A Data Router instance uses its original route tree and requires React Router DOM >=6.4. Versions 6.0–6.3 use the declarative router integrations above:
 
 ```tsx
 const router = createBrowserRouter(routes);
@@ -39,7 +39,7 @@ const plus = createReactRouterPlus({ router, pages, plugins });
 root.render(<plus.Provider />);
 ```
 
-Data Router content belongs in its route records; Provider children are rejected rather than silently discarded. Native route loaders, redirects and blockers remain available. Plus subscribes to the supplied router and never disposes it. Unmounting Provider disconnects Plus and cancels pending receipts; the instance owner calls `plus.dispose()` at the end of its lifetime. Keep the assembled instance stable across renders, using module scope or a state initializer. Mount one Provider per instance.
+Data Router content belongs in its route records; Provider children are rejected rather than silently discarded. Native route loaders and redirects remain available. Native pre-navigation guard interception is enabled when the supplied router exposes blocker registration and blocker state; early Data Router versions without those capabilities retain Plus-initiated guards and committed-location observation. Plus subscribes to the supplied router and never disposes it. Unmounting Provider disconnects Plus and cancels pending receipts; the instance owner calls `plus.dispose()` at the end of its lifetime. Keep the assembled instance stable across renders, using module scope or a state initializer. Mount one Provider per instance.
 
 Both factories also accept `{ plus, router }` to assemble an existing Core instance instead of supplying `pages` and other Core creation options. React and Vue peers remain optional and separate: importing the React entry does not load Vue. Shared peer resolution is still required; assembly does not resolve duplicate router package copies.
 
@@ -58,7 +58,7 @@ function Layout() {
 
 The Provider connects locations and navigation. It does not replace the router or automatically mount an overlay. For router modes supporting `useBlocker`, include that hook in `createReactProvider` to enable native pre-navigation guards. Ordinary declarative routers can continue to use observation and Plus-initiated guards; a custom connection can supply additional capabilities.
 
-`RouterPlusOutlet` caches visited retained instances, freezes native location context and removes released instances. With explicit children it leaves rendering ownership to the caller. Hand-written route trees and `createReactRoutes` use the same instance rules. The cached Outlet uses React Router's exported location context; peer-version integration tests cover that binding.
+`RouterPlusOutlet` caches visited retained instances, freezes native location context and removes released instances. With explicit children it leaves rendering ownership to the caller. Hand-written route trees and `createReactRoutes` use the same instance rules. The cached Outlet uses React Router's exported location context.
 
 `RouterPlusScope` binds only context and adds no DOM or lifecycle behavior, for caller-owned hosts. `RouterPlusBoundary` binds children to an explicit `context` or the current instance and registers its DOM host. `RouterPlusRetained` keeps a subtree mounted while hidden, using its last active context. For full control use `plus.scope(context)` and `registerHost` instead. Hidden mounted trees keep their own effects; applications can use host activation hooks to pause expensive subscriptions, or provide an Activity-based host.
 
@@ -87,7 +87,7 @@ The returned instance is a Vue plugin and exposes the Core API directly. It inst
 
 The plugin connects Vue Router, registers native guards when supported and cleans up on app unmount. Vue NavigationFailure values are mapped to blocked/cancelled/noop; failed afterEach notifications do not publish a target location. Same-address state/Tab updates use forced navigation so history state can change without an address change.
 
-`RouterPlusView` wraps RouterView and caches instances according to Core retention decisions. Frozen scope providers preserve both Plus hooks and native useRoute values. It accepts an optional explicit view component and a cache option. `RouterPlusBoundary` and `RouterPlusRetained` can be used independently in hand-written views. Custom hosts, including KeepAlive-based compositions, use the same registration API.
+`RouterPlusView` wraps RouterView and caches instances according to Core retention decisions. Frozen scope providers preserve both Plus hooks and native useRoute values. It accepts an optional explicit `view` component and `cache` option. `cache` does not override Core release decisions or replace `PageDefinition.retain`; declare retention on the page or call `plus.retain()` when the instance must survive navigation. `RouterPlusBoundary` and `RouterPlusRetained` can be used independently in hand-written views. Custom hosts, including KeepAlive-based compositions, use the same registration API.
 
 Vue exposes matching composables, Link, Redirect and Overlay components. Framework-native presentation mechanisms may differ, while command results, state ownership, scope isolation and retention decisions follow the same core contract.
 
@@ -97,7 +97,7 @@ Vue exposes matching composables, Link, Redirect and Overlay components. Framewo
 
 Scoped navigation uses that scope as the source for leave guards and navigation events, including when the scope is retained but hidden. `navigate`, `replace`, command execution and `setTab` use the same source contract. The destination is still committed through the connected router; the active router context is not temporarily replaced while evaluating guards. Root-instance navigation uses the active page as its source.
 
-`registerHost` accepts optional mount, activate, deactivate, dispose, ready and root methods. Lifecycle work is serialized per host. A bridge snapshot is restored before host activation. Root is used to limit DOM target resolution. Unregister and instance release do not dispose the same host twice.
+`registerHost` accepts optional mount, activate, deactivate, dispose, ready and root methods. Lifecycle work is serialized per host. Registered navigation state restoration and host readiness are separate asynchronous operations; await `whenReady()` when an operation needs their current completion. Root is used to limit DOM target resolution. Unregister and instance release do not dispose the same host twice.
 
 Page id, instance key, state key and history entry identity are separate. Instance keys default to pathname, and can use page identity, selected parameters or a custom function. Retention max counts the active instance and evicts least recently visited inactive instances. `release()` rebuilds state for the active address rather than leaving it attached to disposed storage.
 
@@ -166,3 +166,62 @@ export const plus = createRouterPlus({
 RP 只注册清理，不调用 `accept()`，不接管原生路由器，也不自动保留内存页面状态。由框架或入口边界重新挂载消费者；消费者仍持有旧导出时，不要单独自接受实例模块。替换前同步释放自身全局键并断开导航，异步完成插件和状态清理；旧实例不能删除新实例或第三方的全局对象。清理失败通过 `onDiagnostic(error, 'hmr.dispose')` 报告。正常的重复实例仍报冲突，独立应用应使用不同的 `globalKey`。
 
 Vue 连接在热更新、应用卸载与手动销毁之间只清理一次；原生监听注销失败时仍继续其他清理。适配器清理失败通过 `onDiagnostic` 报告，热更新阶段为 `hmr.dispose`，其他阶段为 `vue.dispose`；诊断回调自身失败不打断清理。
+
+
+## Retained rendering hosts and owned Provider lifetime
+
+`RouterPlusOutlet` automatically retains visited route outlets using the page instance identity. It freezes native location/context for inactive entries, releases evicted entries, and creates a fresh subtree after explicit release. App layout and scroll containers remain inside the route elements.
+
+React accepts an optional `host` component on `RouterPlusOutlet` and `RouterPlusRetained`. The component receives `{ active, children }` and only controls presentation; the library owns the entry map, scopes, frozen locations and release generations. React versions with Activity can use:
+
+```tsx
+import { Activity, type ReactNode } from 'react';
+import { RouterPlusOutlet } from '@jangts/router-plus/react';
+function PageHost({ active, children }: { active: boolean; children?: ReactNode }) {
+  return <Activity mode={active ? 'visible' : 'hidden'}>{children}</Activity>;
+}
+// Render inside a native parent route and the RP Provider:
+<RouterPlusOutlet host={PageHost} />;
+```
+
+The default host keeps mounted DOM hidden and does not require Activity or a newer React peer. Activity suspends hidden effects according to React's own behavior; hiding with CSS has different lifecycle semantics. Vue `RouterPlusView` provides a cached view host and scope; explicit release also rebuilds its subtree. Navigating through an empty or unmatched outlet keeps inactive retained subtrees mounted.
+
+`createReactRouterPlus({ router, pages, disposeOnUnmount: true })` disposes an internally created Core after its last Provider unmount. StrictMode probe cleanup is ignored. The default remains explicit disposal, and supplied Core instances are never disposed by this option. Application HMR replacement, legacy history migration and global-facade policy remain with the App; the library does not reload the application.
+
+React 的 host 只声明如何显示／隐藏内容，不再自行保存访问列表、冻结 location/context 或维护 release 的重建计数。没有 Activity 的 React 版本继续使用默认 host；Vue 使用 RouterPlusView，并可提供接收 active 与默认插槽的 host。disposeOnUnmount 默认关闭，只处理工厂自行创建的实例，最后一个 Provider 卸载后销毁；StrictMode 探测卸载不销毁实例，外部传入的 Core 仍由宿主管理。
+
+
+## Shared navigation and application policy
+
+The `resolveLink`/`navigate` contract handles hash-only and query-only targets, relative paths, explicit origins, safe HTTP(S) addresses and page-ID targets. Configure `origin` for same-origin absolute URL handling. `{ page: 'detail', params: { id }, hash: '#summary' }` builds a declared page without App string concatenation; it keeps Core independent of Vue named-route types. Hash-only links retain the current query; query-only targets follow normal URL resolution and replace the search. Query binding/editing helpers separately preserve the current hash.
+
+Unsafe protocols, protocol-relative addresses and credential-bearing HTTP(S) URLs are rejected. A raw unknown path can still be delegated to the native router's 404 handling; its match/pageId is null. Apps needing a known-page-only policy use `match` and a registered guard. Permission checks, application protocol payloads, route aliases, old history migrations and UI failure categories remain App-owned. No business route-name, product-code or AI-action policy is built into Core.
+
+导航通用解析沿用 resolveLink／navigate；同源完整地址需提供 origin，页 ID 与 params 可直接构造声明页面。原生未登记路径仍可交给框架的 404 处理，不应当作危险地址；严格的已知页面策略由应用通过 match／guard 配置。危险协议、双斜杠地址和带凭据的 HTTP(S) 地址由库拒绝，业务白名单与权限留在应用。
+
+
+See [application integration recipes](application-integration.md) for complete dashboard, asynchronous catalog, request lifecycle, guards and retained-route compositions.
+
+
+## Native document navigation and disabled links
+
+`RouterPlusLink` in React and Vue accepts `reloadDocument`. For a resolved page href, it leaves navigation to the browser instead of preventing the default click and invoking Plus navigation. Use it for document-level reloads or server-handled destinations. External links already use native href navigation; registered action targets retain their action/button behavior. Normal modified clicks, download links and explicit browser targets retain native behavior.
+
+`disabled` removes the href of page/external links, marks `aria-disabled`, removes the link from sequential keyboard focus and prevents click navigation. Action buttons use their native disabled state. Disabling a link is presentation/interaction policy, not authorization; validate permissions at the business boundary.
+
+Vue also accepts a `host` component on `RouterPlusView` and `RouterPlusRetained`. It receives an `active` prop and default slot; Plus owns cache identity and frozen route/context. For example:
+
+```ts
+import { defineComponent, h } from 'vue';
+import { RouterPlusView } from '@jangts/router-plus/vue';
+const PageHost = defineComponent({
+  props: { active: Boolean },
+  setup(props, { slots }) {
+    return () => h('section', { hidden: !props.active }, slots.default?.());
+  },
+});
+// Render below the installed router and Plus providers.
+const AppView = defineComponent({ render: () => h(RouterPlusView, { host: PageHost }) });
+```
+
+默认宿主继续使用 hidden div。Vue 自定义 host 接收 active 与默认 slot，仅控制展示；库负责访问集合、上下文冻结与释放。React/Vue Link 的 reloadDocument 将页面 href 交给浏览器；disabled 阻止控件导航，业务权限仍在业务边界校验。

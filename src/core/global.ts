@@ -21,6 +21,7 @@ export function toGlobalFacade(plus: RouterPlus): RouterPlusGlobal {
         ? plus.execute(command, options)
         : plus.execute(command as import('./types.js').RouterCommand)) as RouterPlus['execute'],
     navigate: (target, options) => plus.navigate(target, options),
+    patchQuery: (patch, options) => plus.patchQuery(patch, options),
     getContext: () => plus.getContext(),
     getState: <T = unknown>(key?: string) => plus.getState<T>(key),
     setState: (value, key) => plus.setState(value, key),

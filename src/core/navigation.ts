@@ -19,6 +19,7 @@ import type {
   PageLinkOptions,
   PageTarget,
   RouterLocation,
+  StateField,
 } from './types.js';
 import { normalizePathname, parseSearch, queryRecord, splitHref } from './util.js';
 
@@ -26,6 +27,11 @@ export type GuardOutcome =
   | { readonly kind: 'allow' }
   | { readonly kind: 'block'; readonly message?: string }
   | { readonly kind: 'redirect'; readonly target: PageTarget };
+
+export type BindingFields = (
+  context: PageContext,
+  definition?: PageDefinition,
+) => Readonly<Record<string, StateField>>;
 
 export function evaluateGuard(result: GuardResult): GuardOutcome {
   if (result === true) return { kind: 'allow' };
@@ -42,6 +48,7 @@ export function buildPageContext(
   pageLink: PageLinkOptions | undefined,
   history: HistoryRecord | null,
   customInstanceKeys?: ReadonlyMap<string, InstanceKeyStrategy>,
+  bindingFields?: BindingFields,
 ): PageContext {
   const {
     pathname: rawPathname,
@@ -68,7 +75,7 @@ export function buildPageContext(
   const query = queryRecord(queryAll);
 
   if (!matched) {
-    return {
+    const context: PageContext = {
       pageId: null,
       path: `${pathname}${search}${hash}`,
       pathname,
@@ -83,6 +90,7 @@ export function buildPageContext(
       page: null,
       location,
     };
+    return { ...context, values: resolveStateValues(bindingFields?.(context) ?? {}, search) };
   }
 
   const definition = matched.definition;
@@ -108,7 +116,11 @@ export function buildPageContext(
     history?.path === pathname && history.instanceKey === instanceKey
       ? (history.values ?? (history.tab !== null ? { tab: history.tab } : undefined))
       : undefined;
-  const values = resolveStateValues(stateFields(definition, pageLink?.tabKey), search, saved);
+  const identity = createInstance(matched.entry, instanceKey, null, false);
+  const fields =
+    bindingFields?.({ ...preliminary, instance: identity }, definition) ??
+    stateFields(definition, pageLink?.tabKey);
+  const values = resolveStateValues(fields, search, saved);
   const tab = typeof values.tab === 'string' ? values.tab : null;
   const instance = createInstance(matched.entry, instanceKey, tab, false);
   return { ...preliminary, values, tab, instance };
@@ -153,6 +165,7 @@ export function contextForPlan(
   customInstanceKeys?: ReadonlyMap<string, InstanceKeyStrategy>,
   explicitTab?: string,
   explicitValues?: Readonly<Record<string, unknown>>,
+  bindingFields?: BindingFields,
 ): PageContext {
   const parts = splitHref(plan.href);
   const context = buildPageContext(
@@ -162,12 +175,14 @@ export function contextForPlan(
       search: parts.search,
       hash: parts.hash,
       state: undefined,
+      matched: undefined,
     },
     catalog,
     matcher,
     pageLink,
     null,
     customInstanceKeys,
+    bindingFields,
   );
   if (!explicitTab && !explicitValues) return context;
   const values = {

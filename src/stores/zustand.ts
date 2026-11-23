@@ -8,7 +8,7 @@ import type {
 } from 'zustand/vanilla';
 import type { UseBoundStore, create } from 'zustand';
 import type { RouterPlus, StateIdOrOptions } from '../core/types.js';
-import { splitBindingArguments, dataValues, type DataState } from './native.js';
+import { splitBindingArguments, dataValues, isRecordState, type DataState } from './native.js';
 import { bindNativeSource, registerSourceGroup } from '../core/native-bindings.js';
 type Creator = typeof create | typeof createStore;
 type Result<F, T, M extends [StoreMutatorIdentifier, unknown][]> = F extends typeof create
@@ -52,7 +52,10 @@ export function registerZustandState<S>(
         plus,
         {
           read: () => dataValues(store.getState()),
-          write: (next) => store.setState(() => next as S),
+          write: (next) => {
+            if (isRecordState(next)) store.setState(() => next as S);
+            else store.setState(() => next as S, true);
+          },
           subscribe: (listener) => store.subscribe(listener),
         },
         idOrOptions,

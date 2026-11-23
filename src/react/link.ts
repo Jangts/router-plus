@@ -17,6 +17,8 @@ export interface RouterPlusLinkProps extends Omit<
   /** Rendered when the target cannot be resolved. */
   readonly fallback?: ReactNode;
   readonly disabled?: boolean;
+  /** Let the browser perform a full document navigation for href targets. */
+  readonly reloadDocument?: boolean;
   readonly replace?: boolean;
   readonly state?: unknown;
   readonly preventScrollReset?: boolean;
@@ -36,6 +38,7 @@ export function RouterPlusLink({
   relative,
   onClick,
   disabled,
+  reloadDocument,
   className,
   title,
   target,
@@ -49,7 +52,7 @@ export function RouterPlusLink({
   if (!resolution) {
     return createElement(
       'span',
-      { className, title, 'aria-label': ariaLabel },
+      { ...rest, className, title, 'aria-label': ariaLabel },
       fallback ?? children,
     );
   }
@@ -58,6 +61,7 @@ export function RouterPlusLink({
     return createElement(
       'button',
       {
+        ...rest,
         type: 'button',
         disabled,
         className,
@@ -76,7 +80,20 @@ export function RouterPlusLink({
   if (resolution.kind === 'external') {
     return createElement(
       'a',
-      { ...rest, className, title, target, download, href: resolution.href, onClick },
+      {
+        ...rest,
+        className,
+        title,
+        target,
+        download,
+        href: disabled ? undefined : resolution.href,
+        'aria-disabled': disabled || undefined,
+        tabIndex: disabled ? -1 : rest.tabIndex,
+        onClick: (event: import('react').MouseEvent<HTMLAnchorElement>) => {
+          onClick?.(event);
+          if (disabled) event.preventDefault();
+        },
+      },
       children,
     );
   }
@@ -89,10 +106,17 @@ export function RouterPlusLink({
       title,
       target,
       download,
-      href: resolution.href,
+      href: disabled ? undefined : resolution.href,
+      'aria-disabled': disabled || undefined,
+      tabIndex: disabled ? -1 : rest.tabIndex,
       onClick: (event: import('react').MouseEvent<HTMLAnchorElement>) => {
         onClick?.(event);
+        if (disabled) {
+          event.preventDefault();
+          return;
+        }
         if (
+          reloadDocument ||
           event.defaultPrevented ||
           event.button !== 0 ||
           event.metaKey ||

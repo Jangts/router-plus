@@ -26,6 +26,15 @@ export type QueryEncoding = string | URLSearchParams | QueryRecord | undefined;
 
 /** One complete field value; nested objects and arrays use JSON unless overridden. */
 export interface StateField<S = unknown> {
+  /** Subscribe to external rule dependencies; the registration owns synchronous cleanup. */
+  readonly observe?: (refresh: () => void) => () => void;
+  /** Defer address restoration and writes until application dependencies are available. */
+  readonly ready?: () => boolean;
+  /** History entries produced by native changes. Default: replace. */
+  readonly history?: 'replace' | 'push';
+  /** Omit values equal to their captured default from the address. Default: false. */
+  readonly omitDefault?: boolean;
+
   /** @internal Explicit registration relationship; never inferred from an ID prefix. */
   readonly sourceParentId?: string;
   readonly default?: S;
@@ -47,6 +56,7 @@ export interface StateField<S = unknown> {
 
 /** A field codec handles its complete value, including non-scalar values. */
 export interface StateValueOptions<S = unknown> {
+  readonly omitDefault?: boolean;
   readonly query?: boolean | string;
   readonly values?: readonly S[];
   readonly validate?: (value: unknown) => boolean;
@@ -82,6 +92,15 @@ export interface StateInspection {
 
 /** Native initialization supplies defaults; registration only adds identity and rules. */
 export type StateBindingOptions<S = unknown> = {
+  /** Notify changes to external readiness, validation or codec dependencies without polling. */
+  readonly observe?: (refresh: () => void) => () => void;
+  /** Defer address restoration and writes until application dependencies are available. */
+  readonly ready?: () => boolean;
+  /** History entries produced by native changes. Default: replace. */
+  readonly history?: 'replace' | 'push';
+  /** Omit values equal to their captured default from the address. Default: false. */
+  readonly omitDefault?: boolean;
+
   readonly id: string;
   readonly query?: boolean | string | readonly string[];
   readonly values?: readonly S[];
@@ -275,6 +294,8 @@ export type PageTarget =
       readonly page: string;
       readonly params?: Record<string, string>;
       readonly query?: Record<string, string>;
+      /** Optional fragment, empty or starting with #. */
+      readonly hash?: string;
       readonly values?: Readonly<Record<string, unknown>>;
       readonly tab?: string;
       readonly state?: unknown;
@@ -435,6 +456,7 @@ export interface NavigationResult {
 export type RouterCommand =
   | { kind: 'navigate'; target: PageTarget; options?: NavigateOptions }
   | { kind: 'replace'; target: PageTarget; options?: NavigateOptions }
+  | { kind: 'query.patch'; patch: QueryRecord; options?: NavigateOptions }
   | { kind: 'back' }
   | { kind: 'forward' }
   | { kind: 'go'; delta: number }
@@ -795,6 +817,8 @@ export interface RouterPlus {
 
   navigate(target: PageTarget, options?: NavigateOptions): Promise<CommandResult>;
   replace(target: PageTarget, options?: NavigateOptions): Promise<CommandResult>;
+  /** Patch named query parameters; undefined/empty arrays delete keys and unrelated parts survive. */
+  patchQuery(patch: QueryRecord, options?: NavigateOptions): Promise<CommandResult>;
   back(): Promise<CommandResult>;
   forward(): Promise<CommandResult>;
   go(delta: number): Promise<CommandResult>;
@@ -862,6 +886,7 @@ export interface RouterPlusGlobal {
     options?: CommandSequenceOptions,
   ): Promise<CommandSequenceResult>;
   navigate(target: PageTarget, options?: NavigateOptions): Promise<CommandResult>;
+  patchQuery(patch: QueryRecord, options?: NavigateOptions): Promise<CommandResult>;
   getContext(): PageContext;
   getState<T = unknown>(key?: string): T;
   setState(value: unknown, key?: string): Promise<CommandResult>;

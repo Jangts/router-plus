@@ -2,9 +2,15 @@
  * Page catalog: the fixed, read-only projection of caller-provided definitions plus the full
  * definitions kept internally for guards, state and generators.
  */
-import { stateFields, validState, queryKeys } from './state-fields.js';
+import { assertStateRules, stateFields, validState, queryKeys } from './state-fields.js';
 import { defaultMatcher, matchDefinition, pageIdOf, type RouteMatcher } from './matcher.js';
-import type { PageCatalog, PageCatalogEntry, PageDefinition, PageMatch } from './types.js';
+import type {
+  PageCatalog,
+  PageCatalogEntry,
+  PageDefinition,
+  PageMatch,
+  StateField,
+} from './types.js';
 import { normalizePathname, parseSearch, queryRecord } from './util.js';
 
 export interface CatalogRuntime {
@@ -12,6 +18,8 @@ export interface CatalogRuntime {
   setMatcher(matcher: RouteMatcher): void;
   readonly definitions: readonly PageDefinition[];
   readonly byId: ReadonlyMap<string, PageDefinition>;
+  /** Original page contracts, independent of later instance registrations. */
+  readonly declaredStates: ReadonlyMap<string, Readonly<Record<string, StateField>>>;
   match(pathname: string): {
     entry: PageCatalogEntry;
     definition: PageDefinition;
@@ -86,6 +94,7 @@ export function createCatalogRuntime(
     }
     const queries = new Set<string>();
     for (const [key, field] of Object.entries(stateFields(definition))) {
+      assertStateRules(field);
       if (!validState(field, field.default))
         throw new Error(`Invalid default state on ${id}: ${key}`);
       for (const query of queryKeys(key, field)) {
@@ -180,6 +189,12 @@ export function createCatalogRuntime(
     catalog,
     definitions,
     byId,
+    declaredStates: new Map(
+      definitions.map((definition) => [
+        pageIdOf(definition),
+        Object.freeze({ ...definition.states }),
+      ]),
+    ),
     match,
     setMatcher(value) {
       activeMatcher = value;

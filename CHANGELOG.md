@@ -1,5 +1,30 @@
 # Changelog / 修改日志
 
+## 0.5.0
+
+- Preserve native Vue route updates, React hash-link query parameters and manually retained page instances across repeated navigation.
+- Preserve unrelated history payloads, non-query navigation state and prototype-named IDs in partial query transactions; follow redirected query commands in sequences.
+- Preserve native Zustand collection roots and primitive history payloads; react to Vue Redirect target updates.
+- Release only owned history wrappers, isolate history observers and align container scrolling to the nearest edge with inline/RTL support.
+
+- Add partial query updates across Core, scoped/global facades, command sequences and React/Vue helpers, preserving unrelated parameters and avoiding unchanged history entries.
+- Accept all native query initializer shapes from functional updaters and parameterized page links with fragments.
+- Observe live validation/codecs without a placeholder readiness predicate; connect independent rule dependencies through lifecycle-owned subscriptions.
+- Add Vue presentation hosts, native document links and consistent disabled/accessibility behavior; include complete bilingual application integration recipes in the package.
+
+- Inherit page state contracts when registering a native source by ID, preserving one declaration for query binding, defaults, enums and codecs.
+- Add synchronous readiness predicates for asynchronous catalogs with framework-owned observation, pending-address preservation and committed React callback rules.
+- Add push/replace history policies and opt-in default omission; merge same-turn native changes into one navigation and restore committed state after rejected proposals.
+- Coordinate functional query edits against the latest address, preserve repeated input values and return real navigation receipts.
+- Add an optional React retained rendering host, rebuild React/Vue subtrees after release, and provide opt-in StrictMode-safe lifetime ownership for internally created React instances.
+
+- Isolate runtime binding callbacks by concrete page instance, preserve inherited group query/omission rules, and restore invalid native proposals.
+- Preserve queued query inputs and overlapping guarded edits, continue cleanup after unsubscribe failures, and support global query sources outside the page catalog.
+- Compare structured defaults without conflating Map/Set values, retain Vue caches through empty outlets, and discard origin framework mappings when resolving synthetic destinations.
+
+- Compose pending state patches and Store field updates, serialize asynchronous global setters/restoration, and support resetting individual Store field paths.
+- Include global restoration in scoped readiness and committed failure receipts; retire obsolete failures and recapture native defaults when a React registration identity changes.
+
 ## 0.4.6 — 2026-11-13
 
 ### English

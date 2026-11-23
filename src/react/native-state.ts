@@ -16,13 +16,13 @@ import type { StateIdOrOptions } from '../core/types.js';
 
 export function useRpState<S>(
   initial: S | (() => S),
-  idOrOptions?: StateIdOrOptions<S>,
+  idOrOptions?: StateIdOrOptions<NoInfer<S>>,
 ): [S, Dispatch<SetStateAction<S>>];
 export function useRpState<S = undefined>(): [
   S | undefined,
   Dispatch<SetStateAction<S | undefined>>,
 ];
-export function useRpState<S>(initial?: S | (() => S), idOrOptions?: StateIdOrOptions<S>) {
+export function useRpState<S>(initial?: S | (() => S), idOrOptions?: StateIdOrOptions<NoInfer<S>>) {
   const result = useState(initial);
   useReactState(result as [S, Dispatch<SetStateAction<S>>], idOrOptions);
   return result;
@@ -50,7 +50,10 @@ export const useRpRef: typeof useRef & {
   useReactState(result, idOrOptions);
   return result;
 };
-export function useRpContext<T>(context: Context<T>, idOrOptions?: StateIdOrOptions<T>): T {
+export function useRpContext<T>(
+  context: Context<T>,
+  idOrOptions?: StateIdOrOptions<NoInfer<T>>,
+): T {
   const result = useContext(context);
   useReactState({ get: () => result }, idOrOptions);
   return result;
@@ -58,7 +61,7 @@ export function useRpContext<T>(context: Context<T>, idOrOptions?: StateIdOrOpti
 export function useRpCallback<T extends (...args: any[]) => any>(
   callback: T,
   dependencies: DependencyList,
-  idOrOptions?: StateIdOrOptions<T>,
+  idOrOptions?: StateIdOrOptions<NoInfer<T>>,
 ): T {
   const result = useCallback(callback, dependencies);
   useReactState(result, idOrOptions);

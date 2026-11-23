@@ -5,12 +5,22 @@ import { defineComponent, h, type PropType } from 'vue';
 import type { LinkTarget, NavigateOptions } from '../core/types.js';
 import { useRouterPlus } from './composables.js';
 
+/** Preserve Vue's merged event-handler arrays for caller-supplied click behavior. */
+function invokeClick(handlers: unknown, event: MouseEvent): void {
+  for (const handler of Array.isArray(handlers) ? handlers : [handlers]) {
+    if (Array.isArray(handler)) invokeClick(handler, event);
+    else if (typeof handler === 'function') handler(event);
+  }
+}
+
 export const RouterPlusLink = defineComponent({
   name: 'RouterPlusLink',
   inheritAttrs: false,
   props: {
     to: { type: [String, Object] as PropType<LinkTarget>, required: true },
     replace: { type: Boolean, default: false },
+    disabled: { type: Boolean, default: false },
+    reloadDocument: { type: Boolean, default: false },
     state: { type: null, default: undefined },
     preventScrollReset: { type: Boolean, default: false },
     viewTransition: { type: Boolean, default: false },
@@ -27,10 +37,10 @@ export const RouterPlusLink = defineComponent({
           {
             ...attrs,
             type: 'button',
+            disabled: props.disabled,
             onClick: (event: MouseEvent) => {
-              const custom = attrs.onClick as ((event: MouseEvent) => void) | undefined;
-              custom?.(event);
-              if (event.defaultPrevented || attrs.disabled) return;
+              invokeClick(attrs.onClick, event);
+              if (event.defaultPrevented || props.disabled) return;
               void plus.executeAction(resolution.actionId, resolution.payload);
             },
           },
@@ -38,18 +48,37 @@ export const RouterPlusLink = defineComponent({
         );
       }
       if (resolution.kind === 'external') {
-        return h('a', { ...attrs, href: resolution.href }, slots.default?.());
+        return h(
+          'a',
+          {
+            ...attrs,
+            href: props.disabled ? undefined : resolution.href,
+            'aria-disabled': props.disabled || undefined,
+            tabindex: props.disabled ? -1 : attrs.tabindex,
+            onClick: (event: MouseEvent) => {
+              invokeClick(attrs.onClick, event);
+              if (props.disabled) event.preventDefault();
+            },
+          },
+          slots.default?.(),
+        );
       }
       return h(
         'a',
         {
           ...attrs,
-          href: resolution.href,
+          href: props.disabled ? undefined : resolution.href,
+          'aria-disabled': props.disabled || undefined,
+          tabindex: props.disabled ? -1 : attrs.tabindex,
           onClick: (event: MouseEvent) => {
-            const custom = attrs.onClick as ((event: MouseEvent) => void) | undefined;
-            custom?.(event);
+            invokeClick(attrs.onClick, event);
+            if (props.disabled) {
+              event.preventDefault();
+              return;
+            }
             const target = attrs.target as string | undefined;
             if (
+              props.reloadDocument ||
               event.defaultPrevented ||
               event.button !== 0 ||
               event.metaKey ||
@@ -57,7 +86,7 @@ export const RouterPlusLink = defineComponent({
               event.ctrlKey ||
               event.shiftKey ||
               (target && target !== '_self') ||
-              attrs.download !== undefined
+              (attrs.download !== undefined && attrs.download !== false)
             ) {
               return;
             }

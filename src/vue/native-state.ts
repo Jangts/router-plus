@@ -16,10 +16,10 @@ import {
 import { useVueState, type RefRegistration } from './existing-state.js';
 import type { StateIdOrOptions } from '../core/types.js';
 
-export function useRpRef<T extends Ref>(value: T, idOrOptions?: RefRegistration<T>): T;
+export function useRpRef<T extends Ref>(value: T, idOrOptions?: RefRegistration<NoInfer<T>>): T;
 export function useRpRef<T>(
   value: T extends Ref ? never : T,
-  idOrOptions?: StateIdOrOptions<UnwrapRef<T>>,
+  idOrOptions?: StateIdOrOptions<NoInfer<UnwrapRef<T>>>,
 ): Ref<UnwrapRef<T>, UnwrapRef<T> | T>;
 export function useRpRef<T = any>(): Ref<T | undefined>;
 export function useRpRef(value?: unknown, idOrOptions?: StateIdOrOptions<any>): Ref<any> {
@@ -29,7 +29,7 @@ export function useRpRef(value?: unknown, idOrOptions?: StateIdOrOptions<any>): 
 }
 export function useRpReactiveState<T extends object>(
   value: T,
-  idOrOptions?: StateIdOrOptions<UnwrapNestedRefs<T>>,
+  idOrOptions?: StateIdOrOptions<NoInfer<UnwrapNestedRefs<T>>>,
 ): Reactive<T> {
   const result = reactive(value);
   useVueState(result as object, idOrOptions as StateIdOrOptions<object>);
@@ -37,21 +37,21 @@ export function useRpReactiveState<T extends object>(
 }
 export function useRpComputedState<T>(
   getter: ComputedGetter<T>,
-  idOrOptions?: StateIdOrOptions<T>,
+  idOrOptions?: StateIdOrOptions<NoInfer<T>>,
 ): ComputedRef<T>;
 export function useRpComputedState<T>(
   getter: ComputedGetter<T>,
   debug: DebuggerOptions | undefined,
-  idOrOptions?: StateIdOrOptions<T>,
+  idOrOptions?: StateIdOrOptions<NoInfer<T>>,
 ): ComputedRef<T>;
 export function useRpComputedState<T, S = T>(
   options: WritableComputedOptions<T, S>,
-  idOrOptions?: [T] extends [S] ? StateIdOrOptions<T> : never,
+  idOrOptions?: [T] extends [S] ? StateIdOrOptions<NoInfer<T>> : never,
 ): WritableComputedRef<T, S>;
 export function useRpComputedState<T, S = T>(
   options: WritableComputedOptions<T, S>,
   debug: DebuggerOptions | undefined,
-  idOrOptions?: [T] extends [S] ? StateIdOrOptions<T> : never,
+  idOrOptions?: [T] extends [S] ? StateIdOrOptions<NoInfer<T>> : never,
 ): WritableComputedRef<T, S>;
 export function useRpComputedState(
   getter: ComputedGetter<any> | WritableComputedOptions<any>,

@@ -44,22 +44,29 @@ export function installHistoryBridge(plus: RouterPlus, target?: WindowLike): () 
   const originalPush = scope.history.pushState;
   const originalReplace = scope.history.replaceState;
   let reporting = false;
+  let installed = true;
   let revision = 0;
 
   const report = (action: 'push' | 'replace' | 'pop') => {
-    if (reporting) return;
+    if (reporting || !installed) return;
     reporting = true;
     try {
       const currentRevision = `raw-${++revision}`;
-      for (const subscriber of bridges.get(scope)?.subscribers.keys() ?? [])
-        subscriber.reportLocation({
-          revision: currentRevision,
-          pathname: scope.location.pathname,
-          search: scope.location.search,
-          hash: scope.location.hash,
-          state: (scope.history as unknown as { state?: unknown }).state,
-          action: action === 'pop' ? 'pop' : action,
-        });
+      for (const subscriber of [...(bridges.get(scope)?.subscribers.keys() ?? [])]) {
+        if (!installed || !bridges.get(scope)?.subscribers.has(subscriber)) continue;
+        try {
+          subscriber.reportLocation({
+            revision: currentRevision,
+            pathname: scope.location.pathname,
+            search: scope.location.search,
+            hash: scope.location.hash,
+            state: (scope.history as unknown as { state?: unknown }).state,
+            action: action === 'pop' ? 'pop' : action,
+          });
+        } catch {
+          /* An observer cannot change the successful native history result. */
+        }
+      }
     } finally {
       reporting = false;
     }
@@ -84,8 +91,9 @@ export function installHistoryBridge(plus: RouterPlus, target?: WindowLike): () 
   bridges.set(scope, {
     subscribers: new Map([[plus, 1]]),
     dispose: () => {
-      scope.history.pushState = originalPush;
-      scope.history.replaceState = originalReplace;
+      installed = false;
+      if (scope.history.pushState === push) scope.history.pushState = originalPush;
+      if (scope.history.replaceState === replace) scope.history.replaceState = originalReplace;
       scope.removeEventListener('popstate', onPop);
       bridges.delete(scope);
     },

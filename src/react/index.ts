@@ -28,6 +28,7 @@ export {
   RouterPlusRetained,
   type RouterPlusBoundaryProps,
   type RouterPlusRetainedProps,
+  type RetainedHost,
 } from './boundary.js';
 export {
   createReactRoutes,

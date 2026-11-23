@@ -15,7 +15,7 @@ export interface SequenceSource {
   readonly identity: object;
   readonly bridge: PageStateBridge;
 }
-const navigationKinds = new Set(['navigate', 'replace', 'back', 'forward', 'go']);
+const navigationKinds = new Set(['navigate', 'replace', 'back', 'forward', 'go', 'query.patch']);
 const sourceIds: Partial<Record<RouterCommand['kind'], (command: any) => string>> = {
   'state.call': (command) => command.id,
   'state.set': (command) => command.key ?? 'default',

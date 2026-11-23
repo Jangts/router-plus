@@ -69,15 +69,43 @@ try {
 import {useRpState,useRpRef as reactRef,createReactRouterPlus} from '@jangts/router-plus/react';
 import {useVueState,useRpRef as vueRef,useRpReactiveState,useRpComputedState} from '@jangts/router-plus/vue';
 import {ref} from 'vue';
+import {createStore as nativeZustand} from 'zustand/vanilla';
+import {registerZustandState} from '@jangts/router-plus/stores/zustand';
 import {configureStore} from '@reduxjs/toolkit';
 import {configureRpReduxStore} from '@jangts/router-plus/stores/redux';
+import {usePageQuery as reactQuery,RouterPlusOutlet,RouterPlusLink as ReactLink,type RetainedHost} from '@jangts/router-plus/react';
+import {usePageQuery as vueQuery} from '@jangts/router-plus/vue';
+void ReactLink({to:'/items',reloadDocument:true,disabled:true});
+const host:RetainedHost=()=>null;void RouterPlusOutlet({host});
+const reactWrite:Promise<unknown>=reactQuery({tags:['one','two']})[1](q=>{q.set('q','value');return q;});
+const reactPatch:Promise<unknown>=reactQuery()[1].patch({page:undefined,tags:['one','two'],keyword:''});
+const vuePatch:Promise<unknown>=vueQuery().patchQuery({page:undefined,tags:[]});void [reactPatch,vuePatch];
+const vueWrite:Promise<unknown>=vueQuery().setQuery({tags:['one','two']});void [reactWrite,vueWrite];
+const dateRef=vueRef(new Date(),{id:'date',query:true,encode:d=>d.toISOString(),decode:raw=>new Date(raw.get('date')??0)});
+const mapRef=vueRef(new Map<string,number>(),{id:'map',query:'selected',encode:m=>JSON.stringify([...m]),decode:raw=>new Map<string,number>(JSON.parse(raw.get('selected')??'[]'))});
+const objectRef=vueRef({term:''},{id:'object',query:'filter',encode:v=>JSON.stringify(v),decode:raw=>JSON.parse(raw.get('filter')??'{"term":""}')});void [dateRef,mapRef,objectRef];
+// @ts-expect-error query updater callbacks are synchronous
+reactQuery()[1](async q=>q);
+// @ts-expect-error dependency observation must return synchronous cleanup
+vueRef('overview',{id:'bad-observe',observe:async()=>()=>{}});
+const observedRef=vueRef('overview',{id:'observed',observe:notify=>{notify();return ()=>{};}});void observedRef;
+const readyRef=vueRef('overview',{id:'tab',query:true,history:'push',omitDefault:true,ready:()=>true});void readyRef;
+// @ts-expect-error readiness cannot be an asynchronous operation
+vueRef('overview',{id:'bad-ready',ready:async()=>true});
+// @ts-expect-error history policy is a closed set
+vueRef('overview',{id:'bad-history',history:'append'});
+const mapStore=nativeZustand(()=>new Map<string,number>());
+registerZustandState(createRouterPlus({pages:[],globalKey:false}),mapStore,{id:'map-store',query:'m',encode:value=>JSON.stringify([...value]),decode:query=>new Map<string,number>(JSON.parse(query.get('m')??'[]'))});
 const RequiredRouter=(_props:{required:string})=>null;
-createReactRouterPlus({router:[RequiredRouter,{required:'yes'}],pages:[],globalKey:false});
+createReactRouterPlus({router:[RequiredRouter,{required:'yes'}],pages:[],globalKey:false,disposeOnUnmount:true});
 // @ts-expect-error constructor props remain checked on legacy routers too
 createReactRouterPlus({router:[RequiredRouter],pages:[],globalKey:false});
 // @ts-expect-error malformed router values are not widened through missing native Data Router types
 createReactRouterPlus({router:1,pages:[],globalKey:false});
 const plus=createRouterPlus({pages:[],globalKey:false});
+plus.execute([{kind:'query.patch',patch:{page:undefined,tags:['one']},options:{replace:true}}]);
+const corePatch:Promise<unknown>=plus.patchQuery({page:undefined,tags:['one']});void corePatch;
+reactQuery()[1](q=>({keyword:q.get('keyword')??'',tags:['a']}));
 const store=configureRpReduxStore(plus,configureStore)({reducer:{count:(state:number=0)=>state}},'count');
 const count:number=store.getState().count;
 // @ts-expect-error inferred reducer state is not a string
@@ -103,6 +131,36 @@ const badComputed:string=computedValue.value;
 useVueState(ref(1),'value');void [count,result,meta,useRpState,vueNumber];`;
   for (const extension of ['mts', 'cts'])
     await writeFile(path.join(temporary, 'consumer.' + extension), consumer);
+  const recipe = await readFile(path.join(root, 'docs/application-integration.md'), 'utf8');
+  const recipeFiles = [];
+  const excludedRecipes = [];
+  const recipeCapabilities = {
+    'react-router-data-router': {
+      available: !minimum,
+      requires: 'react-router-dom >=6.4',
+      reason:
+        'Declared minimum react-router-dom 6.0.0 supports declarative routing but has no createBrowserRouter API',
+    },
+  };
+  for (const [index, match] of [...recipe.matchAll(/```(?:ts|tsx)\n([\s\S]*?)```/g)].entries()) {
+    const requirement = recipe.slice(0, match.index).match(/<!-- requires: ([a-z-]+) -->\s*$/)?.[1];
+    if (requirement) {
+      const capability = recipeCapabilities[requirement];
+      if (!capability) throw new Error(`Unknown recipe capability: ${requirement}`);
+      if (!capability.available) {
+        excludedRecipes.push({
+          recipe: `recipe-${index}.tsx`,
+          capability: requirement,
+          requires: capability.requires,
+          reason: capability.reason,
+        });
+        continue;
+      }
+    }
+    const filename = path.join(temporary, `recipe-${index}.tsx`);
+    await writeFile(filename, match[1]);
+    recipeFiles.push(filename);
+  }
   execFileSync(
     process.execPath,
     [
@@ -111,6 +169,8 @@ useVueState(ref(1),'value');void [count,result,meta,useRpState,vueNumber];`;
       '--strict',
       '--skipLibCheck',
       '--noEmit',
+      '--jsx',
+      'react-jsx',
       '--target',
       'ES2023',
       '--module',
@@ -119,6 +179,7 @@ useVueState(ref(1),'value');void [count,result,meta,useRpState,vueNumber];`;
       'NodeNext',
       path.join(temporary, 'consumer.mts'),
       path.join(temporary, 'consumer.cts'),
+      ...recipeFiles,
     ],
     { cwd: temporary, stdio: 'pipe' },
   );
@@ -143,6 +204,16 @@ for(const sub of ['','/react','/vue','/overlay','/stores/zustand','/stores/redux
 const plus=createRouterPlus({pages:[],globalKey:false});const store=createStore(()=>({count:1}));const stop=registerZustandState(plus,store,'z');await plus.setState(2,'z/count');assert.equal(store.getState().count,2);assert.equal((await plus.execute([{kind:'state.set',key:'z/count',value:3},{kind:'state.read',key:'z/count'}])).ok,true);assert.equal(store.getState().count,3);
 const redux=configureRpReduxStore(plus,configureStore)({reducer:(state=0)=>state},'r');await plus.setState(4,'r');assert.equal(redux.getState(),4);
 const atomStore=atoms(),value=createRpJotaiAtom(plus,atom,atomStore)(1,'j');await plus.setState(5,'j');assert.equal(atomStore.get(value),5);assert.equal(plus.inspectState().length,3+1);stop();await plus.dispose();
+const {createMemoryConnection}=await import('@jangts/router-plus/testing');
+const address=createRouterPlus({pages:[{id:'detail',path:'/items/:id',title:'Detail'}],globalKey:false});address.connect(createMemoryConnection({initial:{pathname:'/items/one',search:'?keep=yes&page=2',hash:'#anchor'}}));
+assert.equal((await address.patchQuery({page:undefined,tags:['one','two'],keyword:''},{replace:true})).ok,true);
+assert.deepEqual(new URLSearchParams(address.getContext().search).getAll('tags'),['one','two']);assert.equal(address.getContext().hash,'#anchor');
+assert.equal((await address.execute([{kind:'query.patch',patch:{keyword:undefined},options:{replace:true}}])).ok,true);
+assert.equal(address.resolveLink({page:'detail',params:{id:'two'},hash:'#chapter'})?.href,'/items/two#chapter');
+const catalog=createStore(()=>({loaded:false})),selection=createStore(()=>({section:'default'}));
+await address.navigate('/items/one?section=two');
+const releaseSelection=registerZustandState(address,selection,{id:'selection',fields:{section:{query:true}},ready:()=>catalog.getState().loaded,observe:notify=>catalog.subscribe(notify)});
+await address.whenReady();assert.equal(selection.getState().section,'default');catalog.setState({loaded:true});await address.whenReady();assert.equal(selection.getState().section,'two');releaseSelection();await address.dispose();
 console.log('Packed ESM/CJS imports, inference and native store writes passed.');`,
   );
   execFileSync(process.execPath, [path.join(temporary, 'runtime.mjs')], {
@@ -153,6 +224,7 @@ console.log('Packed ESM/CJS imports, inference and native store writes passed.')
     JSON.stringify({
       matrix: minimum ? 'declared-peer-minima' : 'installed-peers',
       ...(minimum ? { peers } : {}),
+      recipes: { checked: recipeFiles.length, excluded: excludedRecipes },
       artifact: packed.shasum,
       result: 'passed',
     }),

@@ -10,6 +10,7 @@ const require=createRequire(import.meta.url);
 
 test('all JavaScript exports match across ESM/CJS and CSS is a real asset',async()=>{
  const manifest=JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8'));let pairs=0;
+ assert.equal((await import('../dist/esm/index.js')).ROUTER_PLUS_VERSION,manifest.version);
  for(const [key,entry] of Object.entries(manifest.exports)){
   if(typeof entry==='string'){assert.match(await readFile(new URL('../'+entry,import.meta.url),'utf8'),/rp-overlay-root/);assert.ok(manifest.sideEffects.includes('**/*.css'));continue;}
   const esm=await import(new URL('../'+entry.import,import.meta.url));const common=require('../'+entry.require);assert.deepEqual(Object.keys(esm).sort(),Object.keys(common).sort(),key);await readFile(new URL('../'+entry.types,import.meta.url));pairs++;

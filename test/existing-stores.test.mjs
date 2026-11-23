@@ -119,3 +119,17 @@ test('retired query-writer failures do not poison replacement global or page sou
   assert.equal((await write).reason,'cancelled');assert.equal((await plus.navigate('/a?count=4')).ok,true);assert.equal(value,4);replacement();await plus.dispose();
  }
 });
+
+test('ready binding cleanup continues after a native unsubscriber throws',async()=>{
+ const errors=[],plus=setup({onDiagnostic:(_,stage)=>errors.push(stage)});let detached=0;
+ const store=createStore(()=>({count:0}));const wrapped={...store,subscribe(listener){const stop=store.subscribe(listener);return()=>{detached++;stop();throw new Error('cleanup');};}};
+ const stop=registerZustandState(plus,wrapped,{id:'pending',query:true,ready:()=>false});
+ stop();assert.equal(detached,2);assert.equal(plus.inspectState('pending'),null);assert.equal(plus.pages.get('/a').states.pending,undefined);assert.ok(errors.includes('state.cleanup'));await plus.dispose();
+});
+
+test('global query bindings restore and update even outside the page catalog',async()=>{
+ const plus=createRouterPlus({pages:[],globalKey:false});plus.connect(createMemoryConnection({initial:{pathname:'/unlisted',search:'?count=3&keep=yes',hash:'#part'}}));
+ const store=createStore(()=>({count:0}));const stop=registerZustandState(plus,store,{id:'counter',query:true,omitDefault:true});
+ try{await plus.whenReady();assert.equal(store.getState().count,3);assert.equal((await plus.setState(4,'counter/count')).ok,true);await plus.whenReady();assert.equal(new URLSearchParams(plus.getContext().search).get('count'),'4');assert.equal(plus.getContext().hash,'#part');assert.equal(new URLSearchParams(plus.getContext().search).get('keep'),'yes');}
+ finally{stop();await plus.dispose();}
+});

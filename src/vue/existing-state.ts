@@ -5,6 +5,7 @@ import {
   isReadonly,
   isProxy,
   watch,
+  watchEffect,
   inject,
   getCurrentScope,
   getCurrentInstance,
@@ -14,7 +15,11 @@ import {
   type WritableComputedRef,
 } from 'vue';
 import type { PageStateBridge, StateIdOrOptions, StateAccessor } from '../core/types.js';
-import { bindNativeSource, publishNativeCommit } from '../core/native-bindings.js';
+import {
+  bindNativeSource,
+  publishNativeCommit,
+  refreshNativeBinding,
+} from '../core/native-bindings.js';
 import { ROUTER_PLUS_KEY } from './plugin.js';
 
 function writeContainer(source: object, next: object): void {
@@ -125,13 +130,19 @@ export type RefRegistration<R extends Ref> =
  */
 export function useVueState<F extends (...args: never[]) => unknown>(
   source: F,
-  idOrOptions?: StateIdOrOptions<F>,
+  idOrOptions?: StateIdOrOptions<NoInfer<F>>,
 ): void;
-export function useVueState<R extends Ref>(source: R, idOrOptions?: RefRegistration<R>): void;
-export function useVueState<S>(source: StateAccessor<S>, idOrOptions?: StateIdOrOptions<S>): void;
+export function useVueState<R extends Ref>(
+  source: R,
+  idOrOptions?: RefRegistration<NoInfer<R>>,
+): void;
+export function useVueState<S>(
+  source: StateAccessor<S>,
+  idOrOptions?: StateIdOrOptions<NoInfer<S>>,
+): void;
 export function useVueState<S extends object>(
   source: S extends Ref ? never : S,
-  idOrOptions?: StateIdOrOptions<S>,
+  idOrOptions?: StateIdOrOptions<NoInfer<S>>,
 ): void;
 export function useVueState(source: unknown, idOrOptions?: StateIdOrOptions<any>): void {
   if (idOrOptions === undefined) return;
@@ -169,5 +180,9 @@ export function useVueState(source: unknown, idOrOptions?: StateIdOrOptions<any>
       !instance || instance.scope !== scope,
     ),
   );
+  {
+    const stop = watchEffect(() => refreshNativeBinding(plus, bridge), { flush: 'post' });
+    onScopeDispose(stop);
+  }
   void bridge.whenSettled!();
 }

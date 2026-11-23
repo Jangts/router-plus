@@ -13,6 +13,7 @@ import {
 } from 'vue';
 import type {
   CommandResult,
+  QueryRecord,
   HighlightOptions,
   HighlightState,
   NavigateOptions,
@@ -26,8 +27,13 @@ import type {
 import { resolveStatePage } from '../core/page-selector.js';
 import { ROUTER_PLUS_KEY } from './plugin.js';
 
-export type PageQueryInit =
-  string | URLSearchParams | Record<string, string> | readonly (readonly [string, string])[];
+import {
+  createPageQuery,
+  updatePageQuery,
+  patchPageQuery,
+  type PageQueryInit,
+} from '../core/query-update.js';
+export type { PageQueryInit } from '../core/query-update.js';
 
 function trackSubscription(
   subscribe: (listener: () => void) => () => void,
@@ -49,7 +55,12 @@ export function usePageContext(): Readonly<Ref<PageContext>> {
   trackSubscription(
     (listener) =>
       plus.subscribe((event) => {
-        if (event.type === 'location' || event.type === 'navigation' || event.type === 'tab')
+        if (
+          event.type === 'location' ||
+          event.type === 'navigation' ||
+          event.type === 'tab' ||
+          event.type === 'retain'
+        )
           listener();
       }),
     () => {
@@ -147,29 +158,18 @@ export function usePageQuery(defaultInit?: PageQueryInit) {
   const context = usePageContext();
   const params = computed(() => {
     if (context.value.search) return new URLSearchParams(context.value.search);
-    return new URLSearchParams(defaultInit as string | URLSearchParams | undefined);
+    return createPageQuery(defaultInit);
   });
   return {
     query: readonly(params),
+    patchQuery(patch: QueryRecord, options?: NavigateOptions) {
+      return patchPageQuery(plus, patch, options, defaultInit);
+    },
     setQuery(
-      next: PageQueryInit | ((previous: URLSearchParams) => URLSearchParams),
+      next: PageQueryInit | ((previous: URLSearchParams) => PageQueryInit),
       options?: NavigateOptions,
     ) {
-      const value =
-        typeof next === 'function'
-          ? next(new URLSearchParams(params.value))
-          : next instanceof URLSearchParams
-            ? next
-            : new URLSearchParams(next as string | Record<string, string>);
-      const search = value.toString();
-      void plus.navigate(
-        {
-          pathname: context.value.pathname,
-          search: search ? `?${search}` : '',
-          hash: context.value.hash,
-        },
-        options,
-      );
+      return updatePageQuery(plus, next, options, defaultInit);
     },
   };
 }
