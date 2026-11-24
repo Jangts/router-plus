@@ -4,6 +4,7 @@
 
 ## 当前迭代与审查
 
+- [Router Plus 0.5.0 发布记录](0.5.0-release-2026-11-23.md)。
 - [文档规范审校与站点同步](documentation-standard-audit-2026-11-23.md)。
 
 - [Router Plus 0.5 能力补全与交叉验收](0.5.0-capability-completion-2026-11-23.md)。
