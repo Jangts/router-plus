@@ -9,13 +9,20 @@ const root=fileURLToPath(new URL('../',import.meta.url));
 const require=createRequire(import.meta.url);
 
 test('all JavaScript exports match across ESM/CJS and CSS is a real asset',async()=>{
- const manifest=JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8'));let pairs=0;
+ const manifest=JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8'));
  assert.equal((await import('../dist/esm/index.js')).ROUTER_PLUS_VERSION,manifest.version);
  for(const [key,entry] of Object.entries(manifest.exports)){
   if(typeof entry==='string'){assert.match(await readFile(new URL('../'+entry,import.meta.url),'utf8'),/rp-overlay-root/);assert.ok(manifest.sideEffects.includes('**/*.css'));continue;}
-  const esm=await import(new URL('../'+entry.import,import.meta.url));const common=require('../'+entry.require);assert.deepEqual(Object.keys(esm).sort(),Object.keys(common).sort(),key);await readFile(new URL('../'+entry.types,import.meta.url));pairs++;
+  const esm=await import(new URL('../'+entry.import,import.meta.url));const common=require('../'+entry.require);assert.deepEqual(Object.keys(esm).sort(),Object.keys(common).sort(),key);await readFile(new URL('../'+entry.types,import.meta.url));
  }
- assert.equal(pairs,8);
+ for (const [entry, name] of [
+  ['./testing', 'createRouterPlusTest'],
+  ['./testing/react', 'renderRouterPlus'],
+  ['./testing/vue', 'mountRouterPlus'],
+ ]) {
+  assert.equal(typeof (await import(manifest.name + entry.slice(1)))[name], 'function');
+  assert.equal(typeof require(manifest.name + entry.slice(1))[name], 'function');
+ }
  execFileSync(process.execPath,['--input-type=module','--eval',`import {registerHooks,createRequire} from 'node:module';registerHooks({resolve(spec,ctx,next){if(/^(react|react-dom|react-router-dom|vue|vue-router)(\\/|$)/.test(spec))throw Error('Framework dependency in core');return next(spec,ctx)}});const core=await import('@jangts/router-plus');createRequire(import.meta.url)('@jangts/router-plus');core.createRouterPlus({pages:[],globalKey:false});`],{cwd:root,stdio:'pipe'});
 });
 
