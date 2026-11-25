@@ -12,6 +12,9 @@
 
 ## 本项目
 
+- [消费端测试](testing.md)：纯内存、Vue 和 React 测试封装。
+
+
 - [仓库结构](workspace.md)：单包目录、依赖和实际源码／资料输入关系。
 - [项目检查入口](review-entrypoints.md)：本项目真实工具、证据边界、诊断与素材所有者。
 - [维护资料](maintenance/README.md)：文档归属和检查记录，与当前使用合同分别维护。

@@ -204,7 +204,11 @@ Focus, scrolling, named targets, asynchronous resolvers and custom renderers use
 | `@jangts/router-plus/vue` | Vue assembly/plugin, composables, links, retained rendering and overlay |
 | `@jangts/router-plus/overlay` | Optional DOM runtime, renderer and raw history bridge |
 | `@jangts/router-plus/stores/{redux,zustand,jotai}` | Native store creation and existing-source registration entry points; replace the brace expression with one store name |
-| `@jangts/router-plus/testing` | Memory connection, host and bridge helpers for isolated tests |
+| `@jangts/router-plus/testing` | DOM-free RP fixtures, memory connection, host and bridge helpers |
+| `@jangts/router-plus/testing/vue` | Vue Test Utils mounting with RP and memory routing |
+| `@jangts/router-plus/testing/react` | React Testing Library rendering with RP and memory routing |
+
+See [consumer testing](docs/testing.md) for setup and batch examples.
 
 Applications can keep hand-written routes or use `createReactRoutes` / `createVueRoutes`. Plugins register protocols, actions, guards, instance identity and retention strategies, target resolvers, renderers and route transforms. Page catalogs contain safe metadata, while component/layout maps remain in the application. Route policy and authorization belong to the application.
 
@@ -433,7 +437,11 @@ App 可以用 `<RouterPlusOverlay highlightComponent={AppHighlight} />` 注册�
 | `@jangts/router-plus/vue` | Vue 装配／插件、composables、链接、保留渲染和覆盖层 |
 | `@jangts/router-plus/overlay` | 可选 DOM 运行时、默认 renderer 与原生历史桥接 |
 | `@jangts/router-plus/stores/{redux,zustand,jotai}` | 按状态库拆分的创建与登记入口；使用时将花括号部分替换为具体库名 |
-| `@jangts/router-plus/testing` | 隔离测试使用的内存连接、host 与 bridge 工具 |
+| `@jangts/router-plus/testing` | 无 DOM 的 RP fixture、内存连接、host 与 bridge 工具 |
+| `@jangts/router-plus/testing/vue` | 基于 Vue Test Utils 的 RP 挂载与内存路由 |
+| `@jangts/router-plus/testing/react` | 基于 React Testing Library 的 RP 渲染与内存路由 |
+
+环境配置和批量用例见[消费端测试](docs/testing.md)。
 
 应用可继续手写路由，也可选用 `createReactRoutes`／`createVueRoutes`。插件登记协议、action、守卫、实例身份与保留策略、目标解析器、renderer 和路由转换。页面目录只投影安全元数据，组件／布局映射仍由应用持有；业务路径策略和授权也由应用负责。
 

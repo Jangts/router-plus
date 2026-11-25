@@ -90,3 +90,11 @@ These mechanisms interpret generic contracts only. Handler names, payloads and m
 ## HMR ownership
 
 `CreateRouterPlusOptions.hmr?: RouterPlusHotModule | false` accepts a structural `dispose(callback: () => void): void` host. It registers instance disposal without accepting module updates. The option is inherited by React/Vue factories that create Core. See [framework integration](frameworks.md#hot-module-replacement) for bundler-specific values and lifecycle boundaries. `dispose()` synchronously relinquishes the owned global facade before its asynchronous cleanup finishes.
+
+## Consumer testing / 消费端测试
+
+- `@jangts/router-plus/testing`: `createRouterPlusTest` creates a real RP instance connected to memory history without DOM or framework dependencies.
+- `@jangts/router-plus/testing/vue`: `mountRouterPlus` combines Vue Test Utils, RP and Vue Router memory history.
+- `@jangts/router-plus/testing/react`: `renderRouterPlus` combines React Testing Library, RP and native memory routing; `run` handles commit-dependent operations.
+
+Complete setup, options, results and batch examples: [Consumer testing](testing.md).

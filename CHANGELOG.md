@@ -1,5 +1,12 @@
 # Changelog / 修改日志
 
+## 0.8.0
+
+- Add DOM-free consumer fixtures through `createRouterPlusTest`.
+- Add optional Vue Test Utils and React Testing Library fixtures through `testing/vue` and `testing/react`, preserving native wrappers, queries and routing semantics.
+- Support independent batch fixtures, initial routing readiness, React commit-aware operations and cleanup after partial initialization failures.
+- Document consumer setup, simulated DOM boundaries and per-fixture ownership.
+
 ## 0.5.0
 
 - Preserve native Vue route updates, React hash-link query parameters and manually retained page instances across repeated navigation.

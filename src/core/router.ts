@@ -83,7 +83,7 @@ import {
   toErrorMessage,
 } from './util.js';
 
-export const ROUTER_PLUS_VERSION = '0.5.0';
+export const ROUTER_PLUS_VERSION = '0.8.0';
 export const ROUTER_PLUS_API_VERSION = 1;
 
 interface GuardEntry {

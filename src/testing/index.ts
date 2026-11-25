@@ -8,3 +8,5 @@ export {
 } from './memory-connection.js';
 export { createMemoryHost, type MemoryHost } from './memory-host.js';
 export { createFakeBridge, type FakeBridge } from './fake-bridge.js';
+
+export { createRouterPlusTest, type RouterPlusTestOptions } from './fixture.js';

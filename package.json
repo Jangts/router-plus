@@ -1,6 +1,6 @@
 {
   "name": "@jangts/router-plus",
-  "version": "0.5.0",
+  "version": "0.8.0",
   "type": "commonjs",
   "description": "Routing and native state bindings for React and Vue with query codecs, retained views, highlights and guided tours",
   "license": "Apache-2.0",
@@ -17,7 +17,8 @@
     "NOTICE",
     "CHANGELOG.md",
     "docs/state-bindings.md",
-    "docs/application-integration.md"
+    "docs/application-integration.md",
+    "docs/testing.md"
   ],
   "sideEffects": [
     "**/*.css"
@@ -63,7 +64,17 @@
       "import": "./dist/esm/testing/index.js",
       "require": "./dist/cjs/testing/index.js"
     },
-    "./overlay.css": "./dist/overlay.css"
+    "./overlay.css": "./dist/overlay.css",
+    "./testing/vue": {
+      "types": "./dist/esm/testing/vue.d.ts",
+      "import": "./dist/esm/testing/vue.js",
+      "require": "./dist/cjs/testing/vue.js"
+    },
+    "./testing/react": {
+      "types": "./dist/esm/testing/react.d.ts",
+      "import": "./dist/esm/testing/react.js",
+      "require": "./dist/cjs/testing/react.js"
+    }
   },
   "scripts": {
     "build": "node scripts/clean.mjs && tsc -p tsconfig.json && tsc -p tsconfig.cjs.json && node scripts/finalize.mjs",
@@ -80,7 +91,10 @@
     "vue-router": ">=4.0.16",
     "@reduxjs/toolkit": ">=2",
     "jotai": ">=2",
-    "zustand": ">=5"
+    "zustand": ">=5",
+    "@vue/test-utils": "^2.4.6",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/dom": "^10.4.1"
   },
   "peerDependenciesMeta": {
     "react": {
@@ -106,6 +120,15 @@
     },
     "zustand": {
       "optional": true
+    },
+    "@vue/test-utils": {
+      "optional": true
+    },
+    "@testing-library/react": {
+      "optional": true
+    },
+    "@testing-library/dom": {
+      "optional": true
     }
   },
   "devDependencies": {
@@ -122,7 +145,10 @@
     "vue": "^3.5.45",
     "vue-router": "^4.6.4",
     "zustand": "^5.0.15",
-    "prettier": "^3.9.10"
+    "prettier": "^3.9.10",
+    "@vue/test-utils": "^2.4.6",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/dom": "^10.4.1"
   },
   "publishConfig": {
     "access": "public",
