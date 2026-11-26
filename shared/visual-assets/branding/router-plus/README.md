@@ -10,3 +10,5 @@
 图形以青绿色的相连页面框与橙色焦点组成，表达页面导航、状态延续与页内定位。此目录是素材编辑来源；应用或文档站采用时按各自构建流程生成打包副本，不直接修改副本。
 
 文档站位于相邻的 `pages/` 项目，通过 `pages/development/scripts/site-sync/brand-assets.mjs` 的集中清单读取此处原件。进入 `../pages` 后运行 `node development/scripts/site-sync/brand-assets.mjs --write` 同步文档站副本；不在本项目运行不存在的站点同步命令。
+
+文档站构建时从此目录复制导航图标与组合标志。

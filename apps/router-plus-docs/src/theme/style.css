@@ -1,0 +1,55 @@
+:root {
+  --vp-c-brand-1: #027775;
+  --vp-c-brand-2: #0a8b87;
+  --vp-c-brand-3: #01635f;
+  --vp-c-brand-soft: rgba(2, 119, 117, 0.12);
+  --vp-font-family-base: 'Inter', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  --vp-font-family-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  --vp-sidebar-width: 292px;
+  --vp-layout-max-width: 1600px;
+}
+.dark {
+  --vp-c-brand-1: #45bdb6;
+  --vp-c-brand-2: #33a9a3;
+  --vp-c-brand-3: #23918b;
+  --vp-c-brand-soft: rgba(69, 189, 182, 0.14);
+}
+.VPDoc .content-container {
+  max-width: 880px !important;
+}
+.VPDoc.has-aside .content-container {
+  max-width: 820px !important;
+}
+.vp-doc h1 {
+  overflow-wrap: anywhere;
+  font-size: 29px;
+}
+.vp-doc table {
+  width: 100%;
+  font-size: 14px;
+}
+.vp-doc td {
+  vertical-align: top;
+}
+.vp-doc td code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.vp-doc div[class*='language-'] {
+  font-size: 13px;
+}
+.VPLink.link {
+  overflow-wrap: anywhere;
+}
+.router-plus-locale-switch {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  color: var(--vp-c-text-1);
+  font-size: 14px;
+  font-weight: 500;
+  transition: color 0.25s;
+}
+.router-plus-locale-switch:hover {
+  color: var(--vp-c-brand-1);
+}

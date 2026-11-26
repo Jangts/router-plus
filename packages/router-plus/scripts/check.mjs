@@ -1,4 +1,4 @@
-/** Check this standalone package's lockfile, source imports and public ESM/CJS entries after build. */
+/** Check this SDK workspace lockfile, source imports and public ESM/CJS entries after build. */
 import assert from 'node:assert/strict';
 import { access, readFile, readdir } from 'node:fs/promises';
 import { createRequire } from 'node:module';
@@ -7,12 +7,14 @@ import { fileURLToPath } from 'node:url';
 import { optionalLockProblems } from './optional-locks.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
+const workspaceRoot = fileURLToPath(new URL('../../../', import.meta.url));
+const location = 'packages/router-plus';
 const require = createRequire(new URL('../package.json', import.meta.url));
 const { preProcessFile } = require('typescript');
 const manifest = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
-const lock = JSON.parse(await readFile(path.join(root, 'package-lock.json'), 'utf8'));
+const lock = JSON.parse(await readFile(path.join(workspaceRoot, 'package-lock.json'), 'utf8'));
 for (const filename of ['pnpm-lock.yaml', 'yarn.lock', 'bun.lock', 'bun.lockb']) {
-  await assert.rejects(access(path.join(root, filename)), `Use only package-lock.json: ${filename}`);
+  await assert.rejects(access(path.join(workspaceRoot, filename)), `Use only package-lock.json: ${filename}`);
 }
 const dependencies = {
   ...manifest.dependencies,
@@ -20,13 +22,12 @@ const dependencies = {
   ...manifest.devDependencies,
 };
 assert.equal(manifest.name, '@jangts/router-plus');
-assert.equal(manifest.workspaces, undefined);
-assert.equal(lock.packages[''].name, manifest.name);
-assert.equal(lock.packages[''].version, manifest.version);
-assert.deepEqual(lock.packages[''].devDependencies, manifest.devDependencies);
-assert.deepEqual(lock.packages[''].peerDependencies, manifest.peerDependencies);
+await assert.rejects(access(path.join(root, 'package-lock.json')), 'Use the root package-lock.json');
+assert.deepEqual(lock.packages[`node_modules/${manifest.name}`], { resolved: location, link: true });
+assert.equal(lock.packages[location].version, manifest.version);
+assert.deepEqual(lock.packages[location].devDependencies, manifest.devDependencies);
+assert.deepEqual(lock.packages[location].peerDependencies, manifest.peerDependencies);
 assert.deepEqual(optionalLockProblems(lock), []);
-assert.ok(!Object.values(lock.packages).some((entry) => entry.link));
 
 /** Walk maintained sources and reject undeclared dependencies or imports outside the SDK. */
 async function inspect(directory) {
@@ -69,5 +70,5 @@ for (const [entry, target] of Object.entries(manifest.exports)) {
   );
 }
 console.log(
-  `Package passed: ${manifest.name}@${manifest.version}, ${Object.keys(manifest.exports).length} public entries, standalone lock and isolated imports`,
+  `Package passed: ${manifest.name}@${manifest.version}, ${Object.keys(manifest.exports).length} public entries, workspace lock and isolated imports`,
 );

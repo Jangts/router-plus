@@ -5,9 +5,11 @@
  */
 import { mkdtemp, readFile, writeFile, mkdir, rm } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 const root = fileURLToPath(new URL('../', import.meta.url));
+const require = createRequire(import.meta.url);
 const minimum = process.argv.includes('--minimum');
 /** Declared peer lower bounds, kept explicit so matrix changes remain reviewable. */
 const peers = {
@@ -22,7 +24,9 @@ const peers = {
   '@types/react': '18.0.0',
   '@types/react-dom': '18.0.0',
 };
-const temporary = await mkdtemp(path.join(root, '.tmp/rp-compat-'));
+const scratch = fileURLToPath(new URL('../../../.tmp/', import.meta.url));
+await mkdir(scratch, { recursive: true });
+const temporary = await mkdtemp(path.join(scratch, 'rp-compat-'));
 try {
   const packed = JSON.parse(
     execFileSync(
@@ -164,7 +168,7 @@ useVueState(ref(1),'value');void [count,result,meta,useRpState,vueNumber];`;
   execFileSync(
     process.execPath,
     [
-      path.join(root, 'node_modules/typescript/bin/tsc'),
+      require.resolve('typescript/bin/tsc'),
       '--ignoreConfig',
       '--strict',
       '--skipLibCheck',

@@ -2,7 +2,7 @@
 
 ## 范围与设计依据
 
-正式合同见 [原生状态绑定](../state-bindings.md)。本次范围为 Router Plus 的原生 React／Vue 入口、store 创建封装、内部来源索引、QS 编解码、cafe Tab 调用方、公开类型及双语文档站。依赖锁只补充验证所需的状态库开发依赖和可选 peer 元数据，保留原有平台依赖记录。
+正式合同见 [原生状态绑定](../../packages/router-plus/docs/state-bindings.md)。本次范围为 Router Plus 的原生 React／Vue 入口、store 创建封装、内部来源索引、QS 编解码、cafe Tab 调用方、公开类型及双语文档站。依赖锁只补充验证所需的状态库开发依赖和可选 peer 元数据，保留原有平台依赖记录。
 
 按代码检查标准选取 I01、I03、I04、I06、I07、I11、I13，并检查对应的生命周期、历史恢复、并发与查询参数边界：
 

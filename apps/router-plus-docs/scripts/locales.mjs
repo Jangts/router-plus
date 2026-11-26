@@ -1,0 +1,241 @@
+// Router Plus 文档站语言配置：各语言位于同级目录（/en/ 与 /zh/）；根路径按浏览器语言进入对应首页。
+
+export const locales = [
+  {
+    id: 'zh',
+    dir: 'zh',
+    prefix: '/zh',
+    viteKey: 'zh',
+    label: '简体中文',
+    switchLabel: 'English',
+    lang: 'zh-CN',
+    title: 'Router Plus',
+    description:
+      '面向 React 与 Vue 的路由增强库：统一导航、原生状态接入、查询参数同步、保留视图、高亮与分步导览。',
+    nav: {
+      guide: '指南',
+      api: 'API 参考',
+    },
+    theme: {
+      outlineLabel: '本页目录',
+      returnToTopLabel: '返回顶部',
+      sidebarMenuLabel: '目录',
+      darkModeSwitchLabel: '外观',
+      lightModeSwitchTitle: '切换浅色',
+      darkModeSwitchTitle: '切换深色',
+      docFooterPrev: '上一页',
+      docFooterNext: '下一页',
+      searchButtonText: '搜索接口、类型、示例',
+      searchButtonAriaLabel: '搜索文档',
+      searchNoResultsText: '未找到结果',
+      searchResetButtonTitle: '清空搜索',
+      searchDisplayDetails: '显示上下文',
+      searchSelectText: '选择',
+      searchNavigateText: '切换',
+      searchCloseText: '关闭',
+      footerMessage: '面向 React 与 Vue 的路由增强库。',
+      footerCopyright: 'Router Plus',
+    },
+    text: {
+      home: {
+        heroText: '路由增强，不改写你的 Router',
+        tagline: '统一导航、原生状态接入、查询参数同步、保留视图、高亮与分步导览。',
+        actions: [
+          { theme: 'brand', text: '开始接入', path: '/guide/' },
+          { theme: 'alt', text: '查阅 API 参考', path: '/api/' },
+        ],
+        features: [
+          {
+            title: '统一导航',
+            details:
+              '路径、地址与页面 id 共用一套目标与命令；回执区分守卫拒绝、取消、非法目标与缺少能力。',
+            path: '/guide/navigation',
+          },
+          {
+            title: '原生状态接入',
+            details:
+              'useRp* 创建原生来源，useReactState／useVueState 登记已有来源；实时值继续由应用持有。',
+            path: '/guide/state-and-tabs',
+          },
+          {
+            title: '查询参数与保留视图',
+            details:
+              'query 显式绑定地址参数；页面实例与渲染宿主共同保留组件及 DOM，Tab 使用普通原生状态。',
+            path: '/guide/state-and-tabs',
+          },
+          {
+            title: '高亮与导览',
+            details: '显式目标、聚光、滚动、焦点与分步导览共用实例上下文和取消机制。',
+            path: '/guide/interactions',
+          },
+        ],
+      },
+      render: {
+        kindLabel: (kind) =>
+          ({
+            class: '类',
+            interface: '接口',
+            type: '类型别名',
+            function: '函数',
+            constant: '常量',
+          })[kind] ?? kind,
+        tableField: '字段',
+        tableType: '类型',
+        tableRequired: '必需',
+        tableDescription: '说明',
+        tableMember: '成员',
+        tablePurpose: '用途',
+        tableSymbol: '符号',
+        tableKind: '类别',
+        tableParameter: '类型参数',
+        tableConstraint: '约束',
+        tableDefault: '默认类型',
+        tablePassing: '传递',
+        optional: '可省略',
+        required: '必需',
+        readonly: '只读。',
+        rest: '剩余参数',
+        noParameters: '无调用参数。',
+        returns: '**返回：**',
+        import: '**导入：**',
+        definition: '### 定义',
+        constructor: '构造函数',
+        call: '调用',
+        overload: (index) => `重载 ${index + 1}`,
+        contents: '本页符号',
+        typeAlias: '类型别名',
+        typeParameters: '类型参数',
+        fields: '### 字段',
+        members: '### 成员目录',
+        examples: '使用示例',
+        joiner: '、',
+        seeDefinition: '见类型定义。',
+        seeSignature: '见下方完整签名。',
+        staticMember: '静态成员。',
+        instanceMethod: '实例方法。',
+      },
+    },
+  },
+  {
+    id: 'en',
+    dir: 'en',
+    prefix: '/en',
+    viteKey: 'en',
+    label: 'English',
+    switchLabel: '中文',
+    lang: 'en-US',
+    title: 'Router Plus',
+    description:
+      'Routing enhancements for React and Vue: navigation, native state bindings, query synchronization, retained views, highlights and guided tours.',
+    nav: {
+      guide: 'Guide',
+      api: 'API Reference',
+    },
+    theme: {
+      outlineLabel: 'On this page',
+      returnToTopLabel: 'Return to top',
+      sidebarMenuLabel: 'Menu',
+      darkModeSwitchLabel: 'Appearance',
+      lightModeSwitchTitle: 'Switch to light theme',
+      darkModeSwitchTitle: 'Switch to dark theme',
+      docFooterPrev: 'Previous',
+      docFooterNext: 'Next',
+      searchButtonText: 'Search interfaces, types, examples',
+      searchButtonAriaLabel: 'Search documentation',
+      searchNoResultsText: 'No results found',
+      searchResetButtonTitle: 'Reset search',
+      searchDisplayDetails: 'Display details',
+      searchSelectText: 'to select',
+      searchNavigateText: 'to navigate',
+      searchCloseText: 'to close',
+      footerMessage: 'Routing enhancements for React and Vue.',
+      footerCopyright: 'Router Plus',
+    },
+    text: {
+      home: {
+        heroText: 'Routing enhancements that keep your router',
+        tagline:
+          'Unified navigation, native state bindings, query synchronization, retained views, highlights and guided tours.',
+        actions: [
+          { theme: 'brand', text: 'Start integrating', path: '/guide/' },
+          { theme: 'alt', text: 'Browse API reference', path: '/api/' },
+        ],
+        features: [
+          {
+            title: 'Unified navigation',
+            details:
+              'Paths, addresses and page ids share one target and command model; receipts distinguish guard rejection, cancellation, invalid targets and missing capabilities.',
+            path: '/guide/navigation',
+          },
+          {
+            title: 'Native state bindings',
+            details:
+              'Create native sources with useRp* or register existing ones with useReactState/useVueState; live values remain application-owned.',
+            path: '/guide/state-and-tabs',
+          },
+          {
+            title: 'Queries and retained views',
+            details:
+              'Bind address parameters explicitly with query; page instances and rendering hosts retain components and DOM. Tabs use ordinary native state.',
+            path: '/guide/state-and-tabs',
+          },
+          {
+            title: 'Highlights and tours',
+            details:
+              'Explicit targets, spotlight, scrolling, focus and guided tours share instance context and cancellation.',
+            path: '/guide/interactions',
+          },
+        ],
+      },
+      render: {
+        kindLabel: (kind) =>
+          ({
+            class: 'class',
+            interface: 'interface',
+            type: 'type alias',
+            function: 'function',
+            constant: 'constant',
+          })[kind] ?? kind,
+        tableField: 'Field',
+        tableType: 'Type',
+        tableRequired: 'Required',
+        tableDescription: 'Description',
+        tableMember: 'Member',
+        tablePurpose: 'Purpose',
+        tableSymbol: 'Symbol',
+        tableKind: 'Kind',
+        tableParameter: 'Type parameter',
+        tableConstraint: 'Constraint',
+        tableDefault: 'Default',
+        tablePassing: 'Passing',
+        optional: 'Optional',
+        required: 'Required',
+        readonly: 'Read-only. ',
+        rest: 'Rest parameter',
+        noParameters: 'No call parameters.',
+        returns: '**Returns:**',
+        import: '**Import:**',
+        definition: '### Definition',
+        constructor: 'Constructor',
+        call: 'Call',
+        overload: (index) => `Overload ${index + 1}`,
+        contents: 'Symbols on this page',
+        typeAlias: 'Type alias',
+        typeParameters: 'Type parameters',
+        fields: '### Fields',
+        members: '### Member index',
+        examples: 'Examples',
+        joiner: ', ',
+        seeDefinition: 'See the type definition.',
+        seeSignature: 'See the full signature below.',
+        staticMember: 'Static member.',
+        instanceMethod: 'Instance method.',
+      },
+    },
+  },
+];
+
+export const defaultLocale = locales[0];
+export const localeById = Object.fromEntries(locales.map((locale) => [locale.id, locale]));
+export const localePath = (locale, value) => locale.prefix + value;
+export const storageKey = 'router-plus-doc-lang';

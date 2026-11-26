@@ -1,0 +1,199 @@
+{
+  "name": "@jangts/router-plus",
+  "version": "0.8.0",
+  "type": "commonjs",
+  "description": "Routing and native state bindings for React and Vue with query codecs, retained views, highlights and guided tours",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "docs/api.md",
+    "docs/frameworks.md",
+    "docs/state-and-interaction.md",
+    "LICENSE",
+    "NOTICE",
+    "CHANGELOG.md",
+    "docs/state-bindings.md",
+    "docs/application-integration.md",
+    "docs/testing.md"
+  ],
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    },
+    "./react": {
+      "types": "./dist/esm/react/index.d.ts",
+      "import": "./dist/esm/react/index.js",
+      "require": "./dist/cjs/react/index.js"
+    },
+    "./vue": {
+      "types": "./dist/esm/vue/index.d.ts",
+      "import": "./dist/esm/vue/index.js",
+      "require": "./dist/cjs/vue/index.js"
+    },
+    "./overlay": {
+      "types": "./dist/esm/dom/index.d.ts",
+      "import": "./dist/esm/dom/index.js",
+      "require": "./dist/cjs/dom/index.js"
+    },
+    "./stores/redux": {
+      "types": "./dist/esm/stores/redux.d.ts",
+      "import": "./dist/esm/stores/redux.js",
+      "require": "./dist/cjs/stores/redux.js"
+    },
+    "./stores/zustand": {
+      "types": "./dist/esm/stores/zustand.d.ts",
+      "import": "./dist/esm/stores/zustand.js",
+      "require": "./dist/cjs/stores/zustand.js"
+    },
+    "./stores/jotai": {
+      "types": "./dist/esm/stores/jotai.d.ts",
+      "import": "./dist/esm/stores/jotai.js",
+      "require": "./dist/cjs/stores/jotai.js"
+    },
+    "./testing": {
+      "types": "./dist/esm/testing/index.d.ts",
+      "import": "./dist/esm/testing/index.js",
+      "require": "./dist/cjs/testing/index.js"
+    },
+    "./overlay.css": "./dist/overlay.css",
+    "./testing/vue": {
+      "types": "./dist/esm/testing/vue.d.ts",
+      "import": "./dist/esm/testing/vue.js",
+      "require": "./dist/cjs/testing/vue.js"
+    },
+    "./testing/react": {
+      "types": "./dist/esm/testing/react.d.ts",
+      "import": "./dist/esm/testing/react.js",
+      "require": "./dist/cjs/testing/react.js"
+    }
+  },
+  "scripts": {
+    "build": "node scripts/clean.mjs && tsc -p tsconfig.json && tsc -p tsconfig.cjs.json && node scripts/finalize.mjs",
+    "test": "node --test test/*.test.mjs",
+    "check": "node scripts/check.mjs"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18",
+    "react-router-dom": ">=6",
+    "vue": ">=3.5",
+    "vue-router": ">=4.0.16",
+    "@reduxjs/toolkit": ">=2",
+    "jotai": ">=2",
+    "zustand": ">=5",
+    "@vue/test-utils": "^2.4.6",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/dom": "^10.4.1"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    },
+    "react-router-dom": {
+      "optional": true
+    },
+    "vue": {
+      "optional": true
+    },
+    "vue-router": {
+      "optional": true
+    },
+    "@reduxjs/toolkit": {
+      "optional": true
+    },
+    "jotai": {
+      "optional": true
+    },
+    "zustand": {
+      "optional": true
+    },
+    "@vue/test-utils": {
+      "optional": true
+    },
+    "@testing-library/react": {
+      "optional": true
+    },
+    "@testing-library/dom": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@reduxjs/toolkit": "^2.14.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "jotai": "^3.0.2",
+    "jsdom": "^26.1.0",
+    "pinia": "^4.1.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-router-dom": "^7.18.4",
+    "typescript": "~6.0.2",
+    "vue": "^3.5.45",
+    "vue-router": "^4.6.4",
+    "zustand": "^5.0.15",
+    "prettier": "^3.9.10",
+    "@vue/test-utils": "^2.4.6",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/dom": "^10.4.1"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "keywords": [
+    "router-plus",
+    "router",
+    "routing",
+    "navigation",
+    "react",
+    "react-router",
+    "vue",
+    "vue-router",
+    "page-state",
+    "state-management",
+    "route-guards",
+    "tabs",
+    "keep-alive",
+    "retained-views",
+    "guided-tour",
+    "highlight",
+    "spa",
+    "ssr",
+    "typescript",
+    "browser",
+    "overlay",
+    "spotlight",
+    "tooltip",
+    "product-tour",
+    "onboarding",
+    "page-context",
+    "custom-highlight",
+    "react-hooks",
+    "vue-composables",
+    "query-string",
+    "zustand",
+    "redux-toolkit",
+    "jotai"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Jangts/router-plus.git",
+    "directory": "packages/router-plus"
+  },
+  "bugs": {
+    "url": "https://github.com/Jangts/router-plus/issues"
+  },
+  "homepage": "https://router-plus-docs.pages.jangts.cafe/"
+}

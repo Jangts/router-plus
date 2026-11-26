@@ -1,0 +1,6 @@
+{
+  "host": "user@example.com",
+  "identity": "/absolute/path/to/ssh-key",
+  "pagesRoot": "/opt/stacks/nginx-proxy-manager/data/pages",
+  "site": "router-plus-docs"
+}

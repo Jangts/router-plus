@@ -1,10 +1,13 @@
 import {test} from 'node:test';
-import {mkdtemp,writeFile,rm} from 'node:fs/promises';
+import {mkdir,mkdtemp,writeFile,rm} from 'node:fs/promises';
 import {execFileSync} from 'node:child_process';
+import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import {join} from 'node:path';
 const root=fileURLToPath(new URL('../',import.meta.url));
+const require=createRequire(import.meta.url);
 test('native hook/store wrappers retain generic inference and exclude manual registration from declarations',async()=>{
+ await mkdir(join(root,'.tmp'),{recursive:true});
  const directory=await mkdtemp(join(root,'.tmp/rp-native-types-'));
  try {
   const consumer=`
@@ -126,6 +129,6 @@ import {usePageState} from '@jangts/router-plus/react';
 void [value,text,number,n,selected,r,j];
 `;
   await Promise.all(['consumer.mts','consumer.cts'].map(file=>writeFile(join(directory,file),consumer)));
-  try { execFileSync(process.execPath,[join(root,'node_modules/typescript/bin/tsc'),'--ignoreConfig','--strict','--noEmit','--skipLibCheck','--module','NodeNext','--moduleResolution','NodeNext','--target','ES2023',join(directory,'consumer.mts'),join(directory,'consumer.cts')],{cwd:root,stdio:'pipe'}); } catch(error) { throw new Error(error.stdout?.toString() ?? error.message); }
+  try { execFileSync(process.execPath,[require.resolve('typescript/bin/tsc'),'--ignoreConfig','--strict','--noEmit','--skipLibCheck','--module','NodeNext','--moduleResolution','NodeNext','--target','ES2023',join(directory,'consumer.mts'),join(directory,'consumer.cts')],{cwd:root,stdio:'pipe'}); } catch(error) { throw new Error(error.stdout?.toString() ?? error.message); }
  }finally{await rm(directory,{recursive:true,force:true});}
 });
